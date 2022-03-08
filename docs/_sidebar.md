@@ -1,6 +1,13 @@
 - 设计模式
-  - [第一章节](desgin-pattern/Java面试必备：手写单例模式.md)
+  - [单例模式](desgin-pattern/Java面试必备：手写单例模式.md)
 - Spring框架
+- Java
+  - [基础知识](Java/基础知识.md)
+- Linux
+- 小玩具
+  - [phantomjs生成png图片](小玩具/phantomjs生成png图片.md)
 - 数据库
+- docker
+  - [CMD与ENTRYPOINT的执行顺序](docker/CMD与ENTRYPOINT的执行顺序.md)
 - 系统设计
   - [TopK的问题](系统设计/TopK的问题.md)
