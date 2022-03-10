@@ -4,6 +4,7 @@
 - Java
   - [基础知识](Java/基础知识.md)
 - Linux
+  - [查找日志](Linux/查找日志.md)
 - Redis
   - [认识数据类型](Redis/初识.md)
   - [主从/集群](Redis/架构.md)
