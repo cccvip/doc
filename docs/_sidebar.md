@@ -4,6 +4,13 @@
 - Java
   - [基础知识](Java/基础知识.md)
 - Linux
+- Redis
+  - [认识数据类型](Redis/初识.md)
+  - [主从/集群](Redis/架构.md)
+  - [优化策略](Redis/优化方向.md)
+- 分布式
+  - [分布式锁](分布式/分布式锁.md) 
+  - [分布式缓存](分布式/分布式缓存.md) 
 - 小玩具
   - [phantomjs生成png图片](小玩具/phantomjs生成png图片.md)
 - 数据库
