@@ -3,6 +3,7 @@
 - Spring框架
 - Java
   - [基础知识](Java/基础知识.md)
+  - [JVM](Java/JVM.md)
 - Linux
   - [查找日志](Linux/查找日志.md)
 - Redis
