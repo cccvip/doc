@@ -12,7 +12,8 @@
   - [优化策略](Redis/优化方向.md)
 - 中间件
   - [了解认识kafka](中间件/了解认识kafka.md)
-  - [kafka问题](中间件/kafka实战遇到的问题.md)  
+  - [kafka问题](中间件/kafka实战遇到的问题.md)
+  - [zookeeper](中间件/zookeeper.md)    
 - 分布式
   - [分布式锁](分布式/分布式锁.md) 
   - [分布式缓存](分布式/分布式缓存.md) 
@@ -23,5 +24,6 @@
   - [CMD与ENTRYPOINT的执行顺序](docker/CMD与ENTRYPOINT的执行顺序.md)
 - 系统设计
   - [TopK的问题](系统设计/TopK的问题.md)
+  - [面向失败的设计](系统设计/面向失败的设计.md)
 - 面试心得
   - [运气与实力](面试心得/运气与实力.md)
