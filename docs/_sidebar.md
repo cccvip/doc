@@ -4,6 +4,8 @@
 - Java
   - [基础知识](Java/基础知识.md)
   - [JVM](Java/JVM.md)
+  - [锁](Java/锁.md)
+  - [内存调优](Java/内存调优.md)
 - Linux
   - [查找日志](Linux/查找日志.md)
 - Redis
