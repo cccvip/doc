@@ -6,6 +6,7 @@
   - [JVM](Java/JVM.md)
   - [锁](Java/锁.md)
   - [内存调优](Java/内存调优.md)
+  - [内存调优第二篇](Java/内存调优第二篇.md)
 - Linux
   - [查找日志](Linux/查找日志.md)
 - Redis
@@ -19,8 +20,9 @@
 - 分布式
   - [分布式锁](分布式/分布式锁.md) 
   - [分布式缓存](分布式/分布式缓存.md) 
-- 小玩具
-  - [phantomjs生成png图片](小玩具/phantomjs生成png图片.md)
+- 瞎折腾
+  - [phantomjs生成png图片](瞎折腾/phantomjs生成png图片.md)
+  - [frpc使用](瞎折腾/frpc.md)
 - 数据库
 - docker
   - [CMD与ENTRYPOINT的执行顺序](docker/CMD与ENTRYPOINT的执行顺序.md)
