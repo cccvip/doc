@@ -9,6 +9,7 @@
   - [内存调优第二篇](Java/内存调优第二篇.md)
 - Linux
   - [查找日志](Linux/查找日志.md)
+  - [CP强制覆盖不提示](Linux/CP强制覆盖不提示.md)
 - Redis
   - [认识数据类型](Redis/初识.md)
   - [主从/集群](Redis/架构.md)
