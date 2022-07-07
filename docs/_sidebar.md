@@ -9,6 +9,7 @@
   - [内存调优第二篇](Java/内存调优第二篇.md)
 - Linux
   - [查找日志](Linux/查找日志.md)
+  - [CP强制覆盖不提示](Linux/CP强制覆盖不提示.md)
 - Redis
   - [认识数据类型](Redis/初识.md)
   - [主从/集群](Redis/架构.md)
@@ -20,6 +21,8 @@
 - 分布式
   - [分布式锁](分布式/分布式锁.md) 
   - [分布式缓存](分布式/分布式缓存.md) 
+- spring
+  - [spring](spring/Scheduled注解源码.md)   
 - 瞎折腾
   - [phantomjs生成png图片](瞎折腾/phantomjs生成png图片.md)
   - [frpc使用](瞎折腾/frpc.md)
@@ -33,3 +36,5 @@
   - [开卷有益](项目工程化/Readme.md)  
 - 面试心得
   - [运气与实力](面试心得/运气与实力.md)
+- 生活
+  - [离职](生活/第二次离职.md)  
