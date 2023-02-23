@@ -4,7 +4,7 @@
 - Java
   - [基础知识](Java/基础知识.md)
   - [JVM](Java/JVM.md)
-  - [锁](Java/锁.md)
+  - [锁](Java/JUC.md)
   - [内存调优](Java/内存调优.md)
   - [内存调优第二篇](Java/内存调优第二篇.md)
 - Linux
@@ -30,7 +30,7 @@
 - docker
   - [CMD与ENTRYPOINT的执行顺序](docker/CMD与ENTRYPOINT的执行顺序.md)
 - 系统设计
-  - [TopK的问题](系统设计/TopK的问题.md)
+  - [TopK的问题](系统设计/TopK.md)
   - [面向失败的设计](系统设计/面向失败的设计.md)
 - 项目工程化
   - [开卷有益](项目工程化/Readme.md)  
