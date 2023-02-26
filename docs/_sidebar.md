@@ -1,5 +1,5 @@
 - 设计模式
-  - [单例模式](desgin-pattern/Java面试必备：手写单例模式.md)
+  - [单例模式](desgin-pattern/Singleton.md)
 - Spring框架
 - Java
   - [基础知识](Java/基础知识.md)
@@ -14,6 +14,9 @@
   - [认识数据类型](Redis/初识.md)
   - [主从/集群](Redis/架构.md)
   - [优化策略](Redis/优化方向.md)
+  
+- 计算机网络
+  - [TCP/IP](network/base.MD)
 - 中间件
   - [了解认识kafka](中间件/了解认识kafka.md)
   - [kafka问题](中间件/kafka实战遇到的问题.md)

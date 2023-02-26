@@ -1,8 +1,7 @@
-# Linux查找日志
 
 参考 [https://blog.csdn.net/yangkai_hudong/article/details/47783487](https://blog.csdn.net/yangkai_hudong/article/details/47783487)
 
-# 通过关键字查找
+## 查找日志通过关键字查找
 
 - 一般使用
   
@@ -24,3 +23,8 @@
   ```
 
 
+## 拷贝文件命令
+```shell script
+\cp xxx xxx
+```
+> 当拷贝大量文件的时候,会出现提示确认。尝试使用这种方法可以解决
