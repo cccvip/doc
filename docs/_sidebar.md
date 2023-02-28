@@ -3,7 +3,6 @@
   - [建造者模式](desgin-pattern/Builder.md)
   - [工厂模式](desgin-pattern/Factory.md)
   - [策略模式](desgin-pattern/Strategy.md)
-- Spring框架
 - Java
   - [基础知识](Java/基础知识.md)
   - [IO](Java/IO.md)
@@ -30,7 +29,8 @@
   - [分布式锁](分布式/分布式锁.md) 
   - [分布式缓存](分布式/分布式缓存.md) 
 - spring
-  - [spring](spring/Scheduled注解源码.md)   
+  - [Scheduled注解](spring/Scheduled注解源码.md)  
+  - [IOC](spring/IOC.md)
 - 瞎折腾
   - [phantomjs生成png图片](瞎折腾/phantomjs生成png图片.md)
   - [frpc使用](瞎折腾/frpc.md)
