@@ -1,10 +1,14 @@
 - 设计模式
   - [单例模式](desgin-pattern/Singleton.md)
+  - [建造者模式](desgin-pattern/Builder.MD)
+  - [工厂模式](desgin-pattern/Factory.MD)
+  - [策略模式](desgin-pattern/Strategy.MD)
 - Spring框架
 - Java
   - [基础知识](Java/基础知识.md)
   - [JVM](Java/JVM.md)
   - [锁](Java/JUC.md)
+  - [GC](Java/GC.MD)
   - [内存调优](Java/内存调优.md)
   - [内存调优第二篇](Java/内存调优第二篇.md)
 - Linux
@@ -14,7 +18,6 @@
   - [认识数据类型](Redis/初识.md)
   - [主从/集群](Redis/架构.md)
   - [优化策略](Redis/优化方向.md)
-  
 - 计算机网络
   - [TCP/IP](network/base.MD)
 - 中间件

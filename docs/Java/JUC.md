@@ -262,6 +262,29 @@ private void unparkSuccessor(Node node) {
 相对来说，非公平锁会有更好的性能，因为它的吞吐量比较大。当然，非公平锁让获取锁的时间变得更加不确定，可能会导致在阻塞队列中的线程长期处于饥饿状态
 
 
+## ThreadLocal
+
+![img_1.png](threadLocal.png)
+
+- 斐波拉契散列
+
+使用如下的几张方式计算hash散列
+
+```java
+int HASH_INCREMENT=0x61c88647
+hashCode = (i * HASH_INCREMENT + HASH_INCREMENT)&(size-1);
+```
+
+- 存储结构
+threadLocal是使用threadlocalMap进行存放数据，thread作为key。泛型的值作为value。
+
+- 内存泄漏
+
+内存泄漏：指程序中已经动态分配的堆内存由于某种原因无法释放,造成系统内存的浪费，导致程序运行速度减缓甚至系统崩溃。
+
+为什么会造成内存泄漏？
+
+因为threadLocalMap中的entry的key是WeakReference,本应在每次内存回收的时候或者在扩容,replace值的时候进行清空。但如果出现当前线程结束,则当前线程引用=null, key=null 但value依然存在。
 
 - 分布式锁?
 
