@@ -1,25 +1,27 @@
 - 设计模式
   - [单例模式](desgin-pattern/Singleton.md)
-  - [建造者模式](desgin-pattern/Builder.MD)
-  - [工厂模式](desgin-pattern/Factory.MD)
-  - [策略模式](desgin-pattern/Strategy.MD)
+  - [建造者模式](desgin-pattern/Builder.md)
+  - [工厂模式](desgin-pattern/Factory.md)
+  - [策略模式](desgin-pattern/Strategy.md)
 - Spring框架
 - Java
   - [基础知识](Java/基础知识.md)
+  - [IO](Java/IO.md)
+  - [Collections](Java/Collections.md)  
   - [JVM](Java/JVM.md)
   - [锁](Java/JUC.md)
   - [GC](Java/GC.MD)
   - [内存调优](Java/内存调优.md)
   - [内存调优第二篇](Java/内存调优第二篇.md)
 - Linux
-  - [查找日志](Linux/查找日志.md)
-  - [CP强制覆盖不提示](Linux/CP强制覆盖不提示.md)
+  - [cpu排查流程](Llinux/cpuError.md)
+  - [常见使用指南](Llinux/guide.md)
 - Redis
   - [认识数据类型](Redis/初识.md)
   - [主从/集群](Redis/架构.md)
   - [优化策略](Redis/优化方向.md)
 - 计算机网络
-  - [TCP/IP](network/base.MD)
+  - [TCP/IP](network/base.md)
 - 中间件
   - [了解认识kafka](中间件/了解认识kafka.md)
   - [kafka问题](中间件/kafka实战遇到的问题.md)
@@ -43,4 +45,4 @@
 - 面试心得
   - [运气与实力](面试心得/运气与实力.md)
 - 生活
-  - [离职](生活/第二次离职.md)  
+  - [离职](生活/离职.md)  
