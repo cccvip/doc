@@ -144,6 +144,40 @@ protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate d
 ![img.png](beanLifeCycle.png)
 
 BeanFactoryPostProcessor: 是由 Spring 框架组建提供的容器扩展机制，允许在 Bean 对象注册后但未实例化之前，对 Bean 的定义信息 BeanDefinition 执行修改操作
+
+```java
+Factory hook that allows for custom modification of an application context's bean definitions, adapting the bean property values of the context's underlying bean factory.
+Useful for custom config files targeted at system administrators that override bean properties configured in the application context. See PropertyResourceConfigurer and its concrete implementations for out-of-the-box solutions that address such configuration needs.
+A BeanFactoryPostProcessor may interact with and modify bean definitions, but never bean instances. Doing so may cause premature bean instantiation, violating the container and causing unintended side-effects. If bean instance interaction is required, consider implementing BeanPostProcessor instead.
+Registration
+An ApplicationContext auto-detects BeanFactoryPostProcessor beans in its bean definitions and applies them before any other beans get created. A BeanFactoryPostProcessor may also be registered programmatically with a ConfigurableApplicationContext.
+Ordering
+BeanFactoryPostProcessor beans that are autodetected in an ApplicationContext will be ordered according to org.springframework.core.PriorityOrdered and org.springframework.core.Ordered semantics. In contrast, BeanFactoryPostProcessor beans that are registered programmatically with a ConfigurableApplicationContext will be applied in the order of registration; any ordering semantics expressed through implementing the PriorityOrdered or Ordered interface will be ignored for programmatically registered post-processors. Furthermore, the @Order annotation is not taken into account for BeanFactoryPostProcessor beans.
+Since:
+06.07.2003
+See Also:
+BeanPostProcessor, PropertyResourceConfigurer
+Author:
+Juergen Hoeller, Sam Brannen
+简单翻译:
+        spring IoC 容器允许 BeanFactoryPostProcessor 在容器实例化之前读取 Bean 的定义（也称配置元数据），并可以修改它们。可定义多个 BeanFactoryPostProcessor ，通过设置 order 属性（需要 Order 接口，当前暂时没书写此逻辑）来确定各个BeanFactoryPostProcessor执行顺序。
+
+        注册一个 BeanFactoryPostProcessor 实例需要定义一个 Java 类来实现 BeanFactoryPostProcessor 接口，并重写该接口的 postProcessorBeanFactory 方法。通过 beanFactory 可以获取 bean 的定义信息，并可以修改 bean 的定义信息。这点是和 BeanPostProcessor 最大区别.
+@FunctionalInterface
+public interface BeanFactoryPostProcessor {
+    /**
+     * Modify the application context's internal bean factory after its standard
+     * initialization. All bean definitions will have been loaded, but no beans
+     * will have been instantiated yet. This allows for overriding or adding
+     * properties even to eager-initializing beans.
+     * @param beanFactory the bean factory used by the application context
+     * @throws org.springframework.beans.BeansException in case of errors
+     */
+    void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException;
+
+}
+```
+
 BeanPostProcessor: BeanPostProcessor 是在 Bean 对象实例化之后修改 Bean 对象，也可以替换 Bean 对象。这部分与AOP有着密切的关系
 
 
