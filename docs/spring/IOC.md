@@ -178,9 +178,73 @@ public interface BeanFactoryPostProcessor {
 }
 ```
 
-BeanPostProcessor: BeanPostProcessor 是在 Bean 对象实例化之后修改 Bean 对象，也可以替换 Bean 对象。这部分与AOP有着密切的关系
+BeanPostProcessor: BeanPostProcessor是在Bean对象实例化之后修改 Bean 对象，也可以替换 Bean 对象。这部分与AOP有着密切的关系
 
+```java
+public interface BeanPostProcessor {
 
+    @Nullable
+    default Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+        return bean;
+    }
+    
+    @Nullable
+    default Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+        return bean;
+    }
+}
+```
+针对这两个的原理和使用场景,单开一节详细说.这里知道Spring提供了对应的钩子能进行如下的操作。
+
+#### bean是钩子函数实现
+- init-method
+初始化操作,是在BeanPostProcessor之后,实例化之前调用。
+```java
+public interface InitializingBean {
+    /**
+     * Invoked by the containing {@code BeanFactory} after it has set all bean properties
+     * and satisfied {@link BeanFactoryAware}, {@code ApplicationContextAware} etc.
+     * <p>This method allows the bean instance to perform validation of its overall
+     * configuration and final initialization when all bean properties have been set.
+     * @throws Exception in the event of misconfiguration (such as failure to set an
+     * essential property) or if initialization fails for any other reason
+     */
+    void afterPropertiesSet() throws Exception;
+
+}
+```
+AbstractAutowireCapableBeanFactory(类)->initializeBean(方法)->invokeInitMethods(方法)
+- destroy
+```java
+public interface DisposableBean {
+
+	/**
+	 * Invoked by the containing {@code BeanFactory} on destruction of a bean.
+	 * @throws Exception in case of shutdown errors. Exceptions will get logged
+	 * but not rethrown to allow other beans to release their resources as well.
+	 */
+	void destroy() throws Exception;
+
+}
+```
+AbstractApplicationContext注册钩子函数,在方法结束后会执行destroy方法。
+```java
+@Override
+	public void registerShutdownHook() {
+		if (this.shutdownHook == null) {
+			// No shutdown hook registered yet.
+			this.shutdownHook = new Thread(SHUTDOWN_HOOK_THREAD_NAME) {
+				@Override
+				public void run() {
+					synchronized (startupShutdownMonitor) {
+						doClose();
+					}
+				}
+			};
+			Runtime.getRuntime().addShutdownHook(this.shutdownHook);
+		}
+	}
+```
 
 
 

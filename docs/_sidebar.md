@@ -16,9 +16,9 @@
   - [cpu排查流程](Llinux/cpuError.md)
   - [常见使用指南](Llinux/guide.md)
 - Redis
-  - [认识数据类型](Redis/初识.md)
-  - [主从/集群](Redis/架构.md)
-  - [优化策略](Redis/优化方向.md)
+  - [认识数据类型](redis/初识.md)
+  - [主从/集群](redis/架构.md)
+  - [优化策略](redis/优化方向.md)
 - 计算机网络
   - [TCP/IP](network/base.md)
 - 中间件
