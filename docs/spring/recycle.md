@@ -92,6 +92,12 @@ AbstractAutowireCapableBeanFactory
 		}
 ```
 
+### spring为什么不能解决构造器的循环依赖？
+如果使用构造器的循环依赖,则依赖对象就需要在构造函数中完成初始化。这时候就会出现问题,循坏依赖难以解决！！！！
+
+### spring为什么不能解决prototype作用域的循环依赖？
+此时生成的bean每次都是new的bean,并不会放在缓存中。但spring中循环依赖解决是通过缓存解决的
+
 ## 总结
 ![img.png](Totalcycle.png)
 

@@ -31,6 +31,9 @@
 - spring
   - [Scheduled注解](spring/Scheduled注解源码.md)  
   - [IOC](spring/IOC.md)
+  - [Aop](spring/Aop.md)  
+  - [循环依赖](spring/recycle.md)
+  - [总结](spring/总结.md)
 - 瞎折腾
   - [phantomjs生成png图片](瞎折腾/phantomjs生成png图片.md)
   - [frpc使用](瞎折腾/frpc.md)
