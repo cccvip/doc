@@ -22,7 +22,6 @@
   cat -n run.log |tail -n +200|head -n 100
   ```
 
-
 ## 拷贝文件命令
 ```shell script
 \cp xxx xxx

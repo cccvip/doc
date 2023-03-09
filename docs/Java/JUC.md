@@ -1,6 +1,3 @@
-聊聊认识的锁?
-
-
 ## JUC框架锁
 
 ## synchorized
@@ -296,10 +293,6 @@ threadLocal是使用threadlocalMap进行存放数据，thread作为key。泛型�
 > 在读多写少的场景中使用,并发性低的场景中使用,默认是不会上锁,一般的实现是基于CAS
 - 悲观锁
 > 在读少写多的场景中使用,并发性高的场景中使用,每次写数据的时候都会上锁,ReentrantLock跟Synchorized都是这种实现之一
-
-
-
-
 
 
 

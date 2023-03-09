@@ -9,7 +9,7 @@
   - [Collections](Java/Collections.md)  
   - [JVM](Java/JVM.md)
   - [锁](Java/JUC.md)
-  - [GC](Java/GC.MD)
+  - [GC](Java/GC.md)
   - [内存调优](Java/内存调优.md)
   - [内存调优第二篇](Java/内存调优第二篇.md)
 - Linux
