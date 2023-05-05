@@ -5,7 +5,14 @@
 在修改Delete Line 的快捷键为ctrl+D，按回车键保存
 
 
-git@github.com:talent-plan/tinysql-2022-july-cccvip.git
+- 配置环境变量
+新建文件夹目录
+gopath=f:\go
+gobin=f:\go\bin
 
+进行单元测试
+go test github.com/pingcap/tidb/tablecodec -o tablecodec_test.go -v TestDecodeIndexKey
+
+git@github.com:talent-plan/tinysql-2022-july-cccvip.git
 
 go get -u -v github.com/mdempsky/gocode
