@@ -16,3 +16,9 @@ go test github.com/pingcap/tidb/tablecodec -o tablecodec_test.go -v TestDecodeIn
 git@github.com:talent-plan/tinysql-2022-july-cccvip.git
 
 go get -u -v github.com/mdempsky/gocode
+
+
+
+code-02
+需要先安装ycc,针对.y文件的修改,需要先make parser 
+再执行make test-proj2 单元测试
