@@ -12,6 +12,7 @@
   - [GC](Java/GC.md)
   - [内存调优](Java/内存调优.md)
   - [内存调优第二篇](Java/内存调优第二篇.md)
+  - [jar打包](Java/package.md)
 - Linux
   - [cpu排查流程](Llinux/cpuError.md)
   - [常见使用指南](Llinux/guide.md)
