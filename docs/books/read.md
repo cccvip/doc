@@ -2,7 +2,7 @@
 > 系统的读书,读论文。为了补全知识盲区,技术,人生,历史等
 
 ## 技术
-DDIA-(Designing Data-Intensive Application) 
+DDIA-(Designing Data-Intensive Application) (https://github.com/Vonng/ddia)
 
 
 ## 商业历史
