@@ -28,4 +28,6 @@ andy Pavlo有点东西,第一节课讲了些计算的细节,以及数据库的�
 
 推荐阅读：https://cloud.tencent.com/developer/article/2006282
 
+## 第四节课
 
+个人感觉有点无聊,对于有经验的开发人员可以1.5倍过这个章节+文章的PPT
