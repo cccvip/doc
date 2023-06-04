@@ -20,7 +20,9 @@ OLTP主要分两种存储引擎
 
 介绍了bitcask、lsm-tree、B+ tree等多种结构实现的数据库, 本人对于这部分知识有谢谢了解,但总觉得不算透彻。于是产生了重复造轮子的想法
 
-bitcask实现
+bitcask实现 
+
+[https://github.com/cccvip/ZDB](https://github.com/cccvip/ZDB)
 
 lsm-tree实现
 
