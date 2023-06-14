@@ -117,9 +117,16 @@ Let us coding!
 - Map
 
 ## 命令行解析
-命令行[https://www.redis.net.cn/order/]
+redis命令行[https://www.redis.net.cn/order/]
+> 实现Auth，Ping，ttl,Get,Set,Lpush,Rpush等命令
 
 ## 传输协议
+(RESP)[https://redis.com.cn/topics/protocol.html]
+
+> 协议内容(前缀+正文内容+后缀),例如client发送"ping"，服务端回复 “+OK\r\n”。
+
+Let us coding
+
 
 
 
