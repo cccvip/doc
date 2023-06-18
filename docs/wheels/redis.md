@@ -110,22 +110,51 @@ epoll的优点主要是一下几个方面：
 Let us coding!
 
 ## 数据结构
+
 > java已经实现了基础数据结构类型,例如如下类型
+
 - String
 - Set
 - SortedSet
 - Map
 
 ## 命令行解析
+
 redis命令行[https://www.redis.net.cn/order/]
 > 实现Auth，Ping，ttl,Get,Set,Lpush,Rpush等命令
 
 ## 传输协议
+
 (RESP)[https://redis.com.cn/topics/protocol.html]
 
-> 协议内容(前缀+正文内容+后缀),例如client发送"ping"，服务端回复 “+OK\r\n”。
+> 协议内容(前缀+正文内容+后缀),例如client发送"ping"，服务端回复 “+OK\r\n”。、
 
-Let us coding
+|类型|前缀|备注|
+|---|---|---|
+简单字符串|    +    |简单字符串以+开头
+错误数据    |–|    错误数据以-开头
+整数    |:    |整数以:开头
+复杂字符串|    $|    复杂字符串以$开头
+数组|    *|    数组以*开头
+
+举个例子:
+
+- set onee cccvip
+> 按照RESP协议翻译为: *3\r\n$3\r\nSet\r\n$4\r\nonee\r\n$5\r\ncccvip\r\n
+- *3\r\n 数组类型+长度+结束符
+- $3\r\n 复杂字符串类型+长度+结束符号
+- Set\r\n  参数+结束符号
+- 省略：后面就是一个递归重复。
+熟悉了协议,让我们接着继续coding
+
+
+
+
+
+
+
+
+
 
 
 
