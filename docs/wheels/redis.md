@@ -148,6 +148,13 @@ redis命令行[https://www.redis.net.cn/order/]
 熟悉了协议,让我们接着继续coding
 
 
+## 完成
+整体完成一个命令,Ping(使用java client端Jedis互相通信完成)。
+
+不继续完成Redis其他命令,最主要原因大部分是重复的代码、和RESP协议的解析。
+
+
+
 
 
 
