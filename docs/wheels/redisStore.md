@@ -1,6 +1,24 @@
 # Redis持久化策略
 
 > 低版本中没有持久化策略的实现
+参考源码版本为
+```shell
+# buffer->disk
+void flushAppendOnlyFile(void);
+# write buffer
+void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc);
+# 临时文件移除
+void aofRemoveTempFile(pid_t childpid);
+int rewriteAppendOnlyFileBackground(void);
+# 初始化加载appendOnlyFile
+int loadAppendOnlyFile(char *filename);
+# 停止
+void stopAppendOnly(void);
+# 开始
+int startAppendOnly(void);
+# 守护进程,用于处理append file
+void backgroundRewriteDoneHandler(int statloc);
+```
 
 ## RDB
 
@@ -18,7 +36,7 @@
 
 - 写命令：(先写缓存,再写文件)
 
-> 内容是RESP协议的文本格式,猜测可能是因为这样code更方便
+> 内容是RESP协议的文本格式,个人猜测可能是因为这样交互成本少一些
 
 - 文件压缩: AOF文件会无限制的增长
 
