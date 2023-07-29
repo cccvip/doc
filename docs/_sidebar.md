@@ -1,20 +1,14 @@
 - 书单
   - [最近在读](books/read.md) 
-- 设计模式
-  - [单例模式](desgin-pattern/Singleton.md)
-  - [建造者模式](desgin-pattern/Builder.md)
-  - [工厂模式](desgin-pattern/Factory.md)
-  - [策略模式](desgin-pattern/Strategy.md)
 - Java
-  - [基础知识](Java/基础知识.md)
-  - [IO](Java/IO.md)
-  - [Collections](Java/Collections.md)  
-  - [JVM](Java/JVM.md)
-  - [锁](Java/JUC.md)
-  - [GC](Java/GC.md)
-  - [内存调优](Java/内存调优.md)
-  - [内存调优第二篇](Java/内存调优第二篇.md)
-  - [jar打包](Java/package.md)
+  - [IO](Java/基本/IO.md)
+  - [Collections](Java/基本/Collections.md)  
+  - [JVM](Java/基本/JVM.md)
+  - [锁](Java/基本/JUC.md)
+  - [GC](Java/基本/GC.md)
+  - [内存调优](Java/基本/内存调优.md)
+  - [内存调优第二篇](Java/基本/内存调优第二篇.md)
+  - [jar打包](Java/基本/package.md)
 - Linux
   - [cpu排查流程](Llinux/cpuError.md)
   - [常见使用指南](Llinux/guide.md)
@@ -24,10 +18,6 @@
   - [优化策略](redis/优化方向.md)
 - 计算机网络
   - [TCP/IP](network/base.md)
-- 中间件
-  - [了解认识kafka](中间件/了解认识kafka.md)
-  - [kafka问题](中间件/kafka实战遇到的问题.md)
-  - [zookeeper](中间件/zookeeper.md)    
 - 分布式
   - [分布式锁](分布式/分布式锁.md) 
   - [分布式缓存](分布式/分布式缓存.md) 
@@ -40,15 +30,8 @@
 - 瞎折腾
   - [phantomjs生成png图片](瞎折腾/phantomjs生成png图片.md)
   - [frpc使用](瞎折腾/frpc.md)
-- 数据库
-- docker
-  - [CMD与ENTRYPOINT的执行顺序](docker/CMD与ENTRYPOINT的执行顺序.md)
 - 系统设计
   - [TopK的问题](系统设计/TopK.md)
   - [面向失败的设计](系统设计/面向失败的设计.md)
-- 项目工程化
-  - [开卷有益](项目工程化/Readme.md)  
-- 面试心得
-  - [运气与实力](面试心得/运气与实力.md)
 - 生活
-  - [离职](生活/离职.md)  
+  - [离职](生活/运气与实力.md)  
