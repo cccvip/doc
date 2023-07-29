@@ -1,13 +1,61 @@
-##提出问题
-如果是我们自己来设计spring的IOC模块,会从哪些方面考虑？
-> IOC全名Inversion of Control控制反转,意味着所有的实例对象统统交给spring管理。
+# what
+Spring IOC（Inversion of Control，控制反转）是Spring框架的一个核心特性。它是一种设计原则，通过该原则可以实现解耦和提高代码的可维护性。
+Spring IOC的核心思想是通过反转对象的创建和依赖关系的管理，将对象的创建和依赖关系的处理从应用程序代码中解耦出来，由Spring容器来负责管理。应用程序只需要声明需要依赖的对象，而不需要关心对象的创建和管理细节。
 
-### First
-正常创建对象-交给BeanFactory
+具体来说，应用程序通过配置文件或注解告诉Spring容器需要创建哪些对象，以及它们之间的依赖关系。Spring容器根据这些配置信息，在应用程序运行时动态地创建和管理对象，并自动解决对象之间的依赖关系。
+
+通过使用Spring IOC，可以实现以下好处：
+
+解耦：应用程序的各个模块之间通过接口进行交互，不再直接依赖具体的实现类，降低模块之间的耦合度。
+可维护性：对象的创建和依赖关系的管理集中在Spring容器中，使得代码更容易理解、测试和维护。
+可扩展性：通过配置文件或注解，可以方便地添加、修改或替换对象的实现，而不需要修改应用程序的源代码。
+
+
+# spring5.x
+spring体系发展壮大,当前已经使用注解,例如@Autowired, @Resource等注解使用bean对象。因此,如何使用springboot,spring-cloud等框架不再赘述。
+
+# 理解IOC
+*一次声明,多次使用* (默认是单例)
+
+举一个场景,基于MVC架构,controller调用service,service调用dao。
+```java
+import javax.annotation.Resource;
+
+public class UserController {
+    @Resource
+    UserService userService;
+    
+    public void login(){
+        userService.login();
+    }
+}
+
+public class UserService {
+    @Resource
+    UserDao userDao;
+
+    public void login(){
+        userDao.login();
+    }
+}
+
+//DAO 操作SQL
+```
+如果不使用@Resource,我们至少需要(1) 使用时候,new UserService() (2) 不能针对UserService上下文进行扩展, 也就是后面会介绍的Aop特性。必须硬编码
+
+
+
+
+
+
+
+# 原理解析
+
+### BeanFactory
+创建的Bean对象都交给B
 ![img.png](_assets/createObject.png)
 
 ```java
-
 /**
  * 简介：BeanDefinition描述了bean的实例属性以及构造方法,具体细节可以参考具体的实现类
  * A BeanDefinition describes a bean instance, which has property values,
