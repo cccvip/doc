@@ -4,7 +4,7 @@
 
 ### First
 正常创建对象-交给BeanFactory
-![img.png](createObject.png)
+![img.png](_assets/createObject.png)
 
 ```java
 
@@ -24,7 +24,7 @@ public interface BeanDefinition extends AttributeAccessor, BeanMetadataElement {
 ```
 ### Bean工厂
 类的依赖关系图,理清关系脉络。
-![img.png](BeanFactoryRegister.png)
+![img.png](_assets/BeanFactoryRegister.png)
 
 *从图上可以看到多次使用模板模式进行扩展, 父类定义method的参数跟返回,具体地子类重载实现细节*
 
@@ -141,7 +141,7 @@ protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate d
 ```
 #### bean的扩展机制
 当前bean的使用,不具备扩展性。于是spring针对bean的生命周期提供了扩展口
-![img.png](beanLifeCycle.png)
+![img.png](_assets/beanLifeCycle.png)
 
 BeanFactoryPostProcessor: 是由 Spring 框架组建提供的容器扩展机制，允许在 Bean 对象注册后但未实例化之前，对 Bean 的定义信息 BeanDefinition 执行修改操作
 

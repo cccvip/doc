@@ -1,107 +1,27 @@
-## JUC框架锁
+#what
+ReentrantLock是Java中的一个线程同步机制，它实现了Lock接口。与synchronized关键字相比，ReentrantLock提供了更灵活的锁定操作。
 
-## synchorized
-> 主要就是实现原子性操作和解决共享变量的内存可见性问题。
 
-> 从内存来说，加锁的过程会清除工作内存中的共享变量，再从主内存读取，而释放锁的过程则是将工作内存中的共享变量写回主内存。
-
-### 使用
-
-第一种 代码块
+#how
+使用
 ```java
-public class TestMain {
-    Object object = new Object();
+import java.util.concurrent.locks.ReentrantLock;
 
-    public void synchronizedParams() {
-        synchronized (object) {
+public class ReentrantLockExample {
+    private ReentrantLock lock = new ReentrantLock();
 
-
+    public void doSomething() {
+        lock.lock();
+        try {
+            // 执行需要同步的代码块
+        } finally {
+            lock.unlock();
         }
     }
 }
 ```
-> synchronized(object) 在对某个对象上执行加锁时，会尝试在该对象的监视器上进行加锁操作，只有成功获取锁之后，线程才会继续往下执行。线程获取到了监视器锁后，将继续执行 synchronized 代码块中的代码，如果代码块执行完成，或者抛出了异常，线程将会自动对该对象上的监视器执行解锁操作。
 
-第二种 方法
-```java
-public class TestMain {
-
-    Object object = new Object();
-
-    public synchronized void method() {
-        //
-    }
-}
-```
-> 作用于方法，称为同步方法。同步方法被调用时，会自动执行加锁操作，只有加锁成功，方法体才会得到执行。如果被 synchronized 修饰的方法是实例方法，那么**这个实例的监视器**会被锁定。如果是 static 方法，线程会锁住相应的 **Class 对象的监视器**。方法体执行完成或者异常退出后，会自动执行解锁操作。
-
-DDL（单例模式）
-
-```java
-public class Singleton {
-    private static volatile Singleton singleton;
-
-    private Singleton(){
-
-    }
-
-    public Singleton getInstance(){
-        if(singleton==null){
-            synchronized (Singleton.class){
-                if(singleton==null){
-                    singleton=new Singleton();
-                }
-            }
-        }
-        return  singleton;
-    }
-}
-```
-
-> 如果不加volatile,会有问题吗？为什么
-
-第一个线程在初始化初始化对象，设置 instance 指向内存地址时。第二个线程进入时，有指令重排。在判断 if (instance == null) 时就会有出错的可能，因为这会可能 instance 可能还没有初始化成功。
-
-### 锁升级
-无锁-偏向锁-轻量级锁-重量级锁
-- 无锁 000
-- 偏向锁 101
-- 轻量级锁 10
-- 重量级锁 11
-
-锁修改的是对象头的markWord的锁标识位,以及设置threadId。
-
-- 偏向锁
-  无实际竞争，且将来只有第一个申请锁的线程会使用锁。
-> 修改对象头的锁状态,并设置线程ID,如果同一个线程有多次调用,则计数+1,这也是可重入的机制.
-
-什么时候升级?
-线程2抢占资源的时候,如果发现当前资源依然被线程一持有,锁就会升级会轻量级锁
-
-
-- 轻量级锁 无实际竞争，多个线程交替使用锁；允许短时间的锁竞争。
-
-什么时候升级?
-参考如上面一个过程,这一点很好理解。假如只有一个卫生间,但是有两个人要去抢占,一个人抢到了,第二个就会不停的去问,有没有空间。经过多次尝试都失败后。
-第一个人干脆就把大门锁上,根本不会让第二个人来问。
-
-- 重量级锁 有实际竞争，且锁竞争时间长。
-
-
-> 控制并发的时候,大部分都会选择使用Synchorized,因为在1.8之后的版本升级,锁的膨胀对性能带来的损耗已经是微乎其微(追求极致的性能除外)
-
-## volatile
-
-- 解决什么问题？
-
-1 volatile，会控制被修饰的变量在内存操作上主动把值刷新到主内存，JMM 会把该线程对应的CPU内存设置过期，从主内存中读取最新值。
-
-2 volatile 如何防止指令重排也是内存屏障，volatile 的内存屏故障是在读写操作的前后各添加一个 StoreStore屏障，也就是四个位置，来保证重排序时不能把内存屏障后面的指令重排序到内存屏障之前的位置。
-
-3 volatile 并不能解决原子性，如果需要解决原子性问题，需要使用 synchronzied 或者 lock。
-
-
-## ReentrantLock
+## 原理说明
 流程梳理图如下
 ![img.png](_assets/img.png)
 
@@ -257,40 +177,3 @@ private void unparkSuccessor(Node node) {
 
 公平锁和非公平锁就这两点区别，如果这两次 CAS 都不成功，那么后面非公平锁和公平锁是一样的，都要进入到阻塞队列等待唤醒。
 相对来说，非公平锁会有更好的性能，因为它的吞吐量比较大。当然，非公平锁让获取锁的时间变得更加不确定，可能会导致在阻塞队列中的线程长期处于饥饿状态
-
-
-## ThreadLocal
-
-![img_1.png](threadLocal.png)
-
-- 斐波拉契散列
-
-使用如下的几张方式计算hash散列
-
-```java
-int HASH_INCREMENT=0x61c88647
-hashCode = (i * HASH_INCREMENT + HASH_INCREMENT)&(size-1);
-```
-
-- 存储结构
-threadLocal是使用threadlocalMap进行存放数据，thread作为key。泛型的值作为value。
-
-- 内存泄漏
-
-内存泄漏：指程序中已经动态分配的堆内存由于某种原因无法释放,造成系统内存的浪费，导致程序运行速度减缓甚至系统崩溃。
-
-为什么会造成内存泄漏？
-
-因为threadLocalMap中的entry的key是WeakReference,本应在每次内存回收的时候或者在扩容,replace值的时候进行清空。但如果出现当前线程结束,则当前线程引用=null, key=null 但value依然存在。
-
-## 底层概念
-- 乐观锁
-> 在读多写少的场景中使用,并发性低的场景中使用,默认是不会上锁,一般的实现是基于CAS
-- 悲观锁
-> 在读少写多的场景中使用,并发性高的场景中使用,每次写数据的时候都会上锁,ReentrantLock跟Synchorized都是这种实现之一
-
-
-
-
-
-

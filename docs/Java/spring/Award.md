@@ -4,4 +4,4 @@
 应用上下文(ApplicationContext)不能直接获取，因为用户层没法去接触应用上下文。
 面向于用户的 ClassPathXmlApplicationContext 从功能角度而言不能添加感知接口，所以新建一个后置器去包装感知方法，通过抽象实现 AbstractApplicationContext 中进入 refresh 核心方法中添加后置处理器时AbstractApplicationContext 本身存入后置处理器中.
 
-![img.png](Aware.png)
+![img.png](_assets/Aware.png)

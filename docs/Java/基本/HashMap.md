@@ -1,36 +1,44 @@
-## HashMap
+# what
+Java中的HashMap是一种用于存储键值对的数据结构。它是基于哈希表实现的，可以快速地插入、删除和查找元素。HashMap中的每个元素由一个键和一个值组成，键是唯一的，值可以重复。它提供了常数时间复杂度的插入和查找操作，但不保证元素的顺序。
+
 ![.hashMap.png](hashMap.png)
 
+# 原理实现
 - 散列表实现
 
 假如我们不使用HashMap,自己实现一个散列的内容,可能的代码类似如下
 
 ```java
-List<String> data = new ArrayList<>();
-        data.add("abc");
-        data.add("def");
-        data.add("xiao");
-        data.add("sir");
-        data.add("miss");
-        data.add("haha");
-        data.add("defgi");
-        data.add("3bc");
-        int size = data.size();
-        String[] tab=new String[size];
-
-        for (int i = 0; i < size; i++) {
-             String d=data.get(i);
-             System.out.println(NumberUtil.getBinaryStr(d.hashCode()));
-             int idx = d.hashCode()&(size-1);
-             System.out.println("key:"+idx+"=valus:"+d);
-             if(null == tab[idx]){
-                 tab[idx] =d;
-             }else {
-                 tab[idx] = tab[idx] +"->"+ d;
-             }
+class HasHMap {
+    public static void main(String[] args) {
+      List<String> data = new ArrayList<>();
+      data.add("abc");
+      data.add("def");
+      data.add("xiao");
+      data.add("sir");
+      data.add("miss");
+      data.add("haha");
+      data.add("defgi");
+      data.add("3bc");
+      int size = data.size();
+      String[] tab = new String[size];
+      for (int i = 0; i < size; i++) {
+        String d = data.get(i);
+        System.out.println(NumberUtil.getBinaryStr(d.hashCode()));
+        int idx = d.hashCode() & (size - 1);
+        System.out.println("key:" + idx + "=valus:" + d);
+        if (null == tab[idx]) {
+          tab[idx] = d;
+        } else {
+          tab[idx] = tab[idx] + "->" + d;
         }
-        System.out.println(JSON.toJSONString(tab));
+      }
+      System.out.println(JSON.toJSONString(tab));
+    }
+}
+```
 ====>>输出结果：
+```java
 10111100001100010
 key:2=valus:abc
 11000010000000101
@@ -55,11 +63,10 @@ key:4=valus:3bc
 1. 数组越小碰撞的越大，数组越大碰撞的越小，时间与空间如何取舍。
 2. 目前存放7个元素，已经有两个位置都存放了2个字符串，那么链表越来越长怎么优化。
 3. 随着元素的不断添加，数组长度不足扩容时，怎么把原有的元素，拆分到新的位置上去
-- 扰动函数
-  
+- 增加扰动函数
 java8中hashMap的扰动函数hash计算如下
 
-```java
+```shell
 static final int hash(Object key) {
         int h;
         return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
@@ -87,8 +94,7 @@ abc的hashcode值为
 扩容就考虑到是否要重新进行hash计算数据存放的索引, 针对java8而言不需要重新计算下标。那么这个是怎么做到的呢？
 
 验证：
-
-```java
+```shell
 List<String> list = new ArrayList<>();
         list.add("jlkk");
         list.add("lopi");
@@ -113,8 +119,9 @@ List<String> list = new ArrayList<>();
             int hash = d.hashCode() & (d.hashCode() >>> 16);
             System.out.println("字符串：" + d + " \tIdx(16)：" + Integer.toBinaryString((16 - 1) & hash) +  "\tIdx(16)"+Integer.toBinaryString((32 - 1) & hash));
         }
-
-===>输出结果
+```
+打印结果
+```shell
 字符串：jlkk 	Idx(16)：0	Idx(32)0
 字符串：lopi 	Idx(16)：0	Idx(32)10000
 字符串：jmdw 	Idx(16)：0	Idx(32)10000
@@ -145,14 +152,11 @@ table.length≥64 && 链表长度≥8的时候
 
 需要经历左旋 右旋转 染色
 
-## 问题?
-为什么 HashMap 的数组长度要取 2 的整数幂?
+# 八股文面试问题
+## 为什么 HashMap 的数组长度要取 2 的整数幂?
 因为这样（数组长度 - 1）正好相当于一个 “低位掩码”。与 操作的结果就是散列值的高位全部归零，只保留低位值，用来做数组下标访问。
 
 扰动函数右移 16 位，正好是 32bit 的一半，自己的高半区和低半区做异或，就是为了混合原始哈希码的高位和低位，以此来加大低位的随机性。而且混合后的低位掺杂了高位的部分特征，这样高位的信息也被变相保留下来。
-
-
-*其它的hash函数*
 
 ## 解决hash冲突有哪些方法？
 - 链地址法
@@ -169,7 +173,7 @@ hashtable允许key,value为null.HashMap则不可以
 hashtable是线程安全,hashmap不是。
 迭代器实现方式不一样 hashMap是fail-fast。hashtable是fail-safe。  
   
-#### 为什么hashtable不允许为空？
+### 为什么hashtable不允许为空？
 - 源码设计上如果传入为null 会报空指针异常。
 
 ### 问题
@@ -189,16 +193,5 @@ hashtable是线程安全,hashmap不是。
 ### 1.8相比1.7优化策略在哪儿？
 使用红黑树+尾插法优化掉存储结构
 
-## ConcurrentHashMap
-
-1.7使用segment分段锁  16个桶
-1.8使用cas+synchronized
-
-## 快速失败跟安全失败
-快速失败是java集合的一种错误机制
-集合执行遍历元素的时候,线程A在遍历对象 线程B对集合内容进行了修改,就会抛出异常。
-
-安全失败
-基于拷贝的集合进行安全遍历,所以不会触发异常。但并发修改后,不能读取到最新的数据
 
 

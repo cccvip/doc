@@ -1,14 +1,21 @@
 - 书单
   - [最近在读](books/read.md) 
 - Java
-  - [IO](Java/基本/IO.md)
-  - [Collections](Java/基本/Collections.md)  
+  - [反射](Java/基本/反射.md)
+  - [注解](Java/基本/注解.md)
+  - [HashMap](Java/基本/HashMap.md)
+  - [Synchorized](Java/基本/Synchorized.md)  
+  - [ReentrantLock](Java/基本/ReentrantLock.md)
+  - [threadLocal](Java/基本/threadLocal.md)
+  - [线程池](Java/基本/线程池.md)
   - [JVM](Java/基本/JVM.md)
-  - [锁](Java/基本/JUC.md)
   - [GC](Java/基本/GC.md)
   - [内存调优](Java/基本/内存调优.md)
   - [内存调优第二篇](Java/基本/内存调优第二篇.md)
   - [jar打包](Java/基本/package.md)
+    - spring
+        -  [AOP](Java/spring/Aop.md)
+        -  [IOC](Java/spring/IOC.md)
 - Linux
   - [cpu排查流程](Llinux/cpuError.md)
   - [常见使用指南](Llinux/guide.md)

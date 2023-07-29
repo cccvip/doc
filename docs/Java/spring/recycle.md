@@ -63,7 +63,7 @@ com.xiao.A@4f3f5b24
 com.xiao.B@15aeb7ab
 ```
 ### 为什么spring不使用一级缓存解决问题呢
-![img.png](beanRecyle.png)
+![img.png](_assets/beanRecyle.png)
 
 因为对象还有属性未被赋值,未被初始化。在spring的Bean生命周期中,bean存在实例化和初始化后的两种状态存在,
 也可称之为半成品化和成品化。如果只有一级缓存(一个Map),是无法解决bean生命周期两个状态bean共存的这个问题。
@@ -99,12 +99,12 @@ AbstractAutowireCapableBeanFactory
 此时生成的bean每次都是new的bean,并不会放在缓存中。但spring中循环依赖解决是通过缓存解决的
 
 ## 总结
-![img.png](Totalcycle.png)
+![img.png](_assets/Totalcycle.png)
 
 举一个例子
-![img.png](example.png)
+![img.png](_assets/example.png)
 
-![img.png](exampleDetail.png)
+![img.png](_assets/exampleDetail.png)
 
 
 
