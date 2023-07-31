@@ -14,8 +14,10 @@
   - [内存调优第二篇](Java/基本/内存调优第二篇.md)
   - [jar打包](Java/基本/package.md)
     - spring
-        -  [AOP](Java/spring/Aop.md)
         -  [IOC](Java/spring/IOC.md)
+        -  [IOC](Java/spring/IOC.md)
+        -  [AOP](Java/spring/Aop.md)
+        
 - Linux
   - [cpu排查流程](Llinux/cpuError.md)
   - [常见使用指南](Llinux/guide.md)

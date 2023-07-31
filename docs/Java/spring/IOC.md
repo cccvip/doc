@@ -10,9 +10,9 @@ IOC的核心思想是通过反转对象的创建和依赖关系的管理，将�
 解耦：应用程序的各个模块之间通过接口进行交互，不再直接依赖具体的实现类，降低模块之间的耦合度。 可维护性：对象的创建和依赖关系的管理集中在Spring容器中，使得代码更容易理解、测试和维护。
 可扩展性：通过配置文件或注解，可以方便地添加、修改或替换对象的实现，而不需要修改应用程序的源代码。
 
-# spring5.x
+# 注解>XML
 
-spring体系发展壮大,使用@Autowired, @Resource等注解,引入bean对象,并使用它。
+随着spring的时代发展,使用XML的方式声明Bean,似乎已在旧时代了。微服务概念的兴起,SpringBoot提倡约定大于配置。减少更多的配置文件,采取就开始使用注解,例如@Autowired, @Resource。
 
 # 理解IOC
 
@@ -283,57 +283,55 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
             processBeanDefinition(ele, delegate);
         }
         else if (delegate.nodeNameEquals(ele, NESTED_BEANS_ELEMENT)) {
-            // 递归调用
+            // 递归调用 省略
+        
         }
     }
-    
+
+	protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
+	    //将Bean放到Spring容器中
+        // Register the final decorated instance.
+		BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
+		
+		//默认是空实现,依赖是Spring事件机制实现 挖个坑,后面填
+		getReaderContext().fireComponentRegistered(new BeanComponentDefinition(bdHolder));
+	}
 }
 ```
 
-#### bean的扩展机制
 
-当前bean的使用,不具备扩展性。于是spring针对bean的生命周期提供了扩展口
+## bean的扩展
+
+既然提到了IOC的思想特性是解耦,那我们需要掌握Spring的Bean的生命周期,才能知道如何对Spring进行扩展
 ![img.png](_assets/beanLifeCycle.png)
 
-BeanFactoryPostProcessor: 是由 Spring 框架组建提供的容器扩展机制，允许在 Bean 对象注册后但未实例化之前，对 Bean 的定义信息 BeanDefinition 执行修改操作
+### BeanFactoryPostProcessor
+
+Spring的BeanFactoryPostProcessor接口是一个扩展点，它允许在Spring容器实例化和配置Bean之前对BeanDefinition进行修改。它的主要作用是对BeanDefinition进行定制化的处理，例如修改Bean的属性值、添加额外的Bean定义、移除不需要的Bean等。
+
+BeanFactoryPostProcessor在Spring容器启动阶段执行，并且在Bean实例化之前执行。它可以对应用程序上下文中的所有BeanDefinition进行操作，包括自定义BeanDefinition和Spring内部创建的BeanDefinition。
+
+通过实现BeanFactoryPostProcessor接口，可以在Spring容器启动时动态地修改BeanDefinition，从而实现对Bean的定制化处理。这种灵活性使得我们可以根据实际需求对Bean进行动态调整和配置，以满足特定的业务逻辑要求。
 
 ```java
-Factory hook that allows for custom modification of an application context's bean definitions, adapting the bean property values of the context's underlying bean factory.
-        Useful for custom config files targeted at system administrators that override bean properties configured in the application context.See PropertyResourceConfigurer and its concrete implementations for out-of-the-box solutions that address such configuration needs.
-        A BeanFactoryPostProcessor may interact with and modify bean definitions,but never bean instances.Doing so may cause premature bean instantiation,violating the container and causing unintended side-effects.If bean instance interaction is required,consider implementing BeanPostProcessor instead.
-        Registration
-        An ApplicationContext auto-detects BeanFactoryPostProcessor beans in its bean definitions and applies them before any other beans get created.A BeanFactoryPostProcessor may also be registered programmatically with a ConfigurableApplicationContext.
-        Ordering
-        BeanFactoryPostProcessor beans that are autodetected in an ApplicationContext will be ordered according to org.springframework.core.PriorityOrdered and org.springframework.core.Ordered semantics.In contrast,BeanFactoryPostProcessor beans that are registered programmatically with a ConfigurableApplicationContext will be applied in the order of registration;any ordering semantics expressed through implementing the PriorityOrdered or Ordered
-
-interface will be ignored for programmatically registered post-processors.Furthermore,the@Order annotation is not taken into account for BeanFactoryPostProcessor beans.
-        Since:
-        06.07.2003
-        See Also:
-        BeanPostProcessor,PropertyResourceConfigurer
-        Author:
-        Juergen Hoeller,Sam Brannen
-        简单翻译:
-        spring IoC 容器允许 BeanFactoryPostProcessor 在容器实例化之前读取 Bean 的定义（也称配置元数据），并可以修改它们。可定义多个 BeanFactoryPostProcessor ，通过设置 order 属性（需要 Order 接口，当前暂时没书写此逻辑）来确定各个BeanFactoryPostProcessor执行顺序。
-
-        注册一个 BeanFactoryPostProcessor 实例需要定义一个 Java 类来实现 BeanFactoryPostProcessor 接口，并重写该接口的 postProcessorBeanFactory 方法。通过 beanFactory 可以获取 bean 的定义信息，并可以修改 bean 的定义信息。这点是和 BeanPostProcessor 最大区别.
-
 @FunctionalInterface
 public interface BeanFactoryPostProcessor {
-    /**
-     * Modify the application context's internal bean factory after its standard
-     * initialization. All bean definitions will have been loaded, but no beans
-     * will have been instantiated yet. This allows for overriding or adding
-     * properties even to eager-initializing beans.
-     * @param beanFactory the bean factory used by the application context
-     * @throws org.springframework.beans.BeansException in case of errors
-     */
     void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException;
-
 }
+
 ```
 
-BeanPostProcessor: BeanPostProcessor是在Bean对象实例化之后修改 Bean 对象，也可以替换 Bean 对象。这部分与AOP有着密切的关系
+### BeanPostProcessor
+
+Spring的BeanPostProcessor是一个特殊的接口，它允许在Spring容器实例化Bean和将其配置为应用程序组件之前和之后对它们进行自定义处理。
+
+BeanPostProcessor接口定义了两个用于处理Bean的方法：
+
+postProcessBeforeInitialization(Object bean, String beanName)：在初始化之前对Bean进行自定义处理。可以在此方法中修改Bean的属性值或执行一些自定义逻辑。
+
+postProcessAfterInitialization(Object bean, String beanName)：在初始化之后对Bean进行自定义处理。可以在此方法中执行一些额外的初始化操作，或者对Bean进行包装。
+
+BeanPostProcessor接口的实现类可以注册到Spring容器中，它们将自动应用于所有的Bean。可以使用BeanPostProcessor来实现一些通用的逻辑，例如日志记录、性能监控、事务管理等。
 
 ```java
 public interface BeanPostProcessor {
@@ -350,65 +348,91 @@ public interface BeanPostProcessor {
 }
 ```
 
-针对这两个的原理和使用场景,单开一节详细说.这里知道Spring提供了对应的钩子能进行如下的操作。
+### InitializingBean
 
-#### bean是钩子函数实现
+InitializingBean 是 Spring 框架中的一个接口，它定义了一个用于初始化 bean 的方法。
+当一个 bean 实现了 InitializingBean 接口并且被 Spring 容器创建时，容器会调用 afterPropertiesSet() 方法来完成 bean 的初始化工作。
 
-- init-method 初始化操作,是在BeanPostProcessor之后,实例化之前调用。
+InitializingBean 接口的作用是允许 bean 在完成属性注入后执行一些自定义的初始化逻辑。通常情况下，我们可以在 afterPropertiesSet() 方法中实现一些需要在 bean 初始化阶段进行的操作，比如数据源的初始化、资源的加载等等。
+
+使用 InitializingBean 接口的优点是，它提供了一个标准化的初始化方法，可以让开发人员在 bean 初始化阶段进行一些通用的操作，而不需要显式地在代码中调用初始化方法。'
+另外，InitializingBean 接口还可以与其他 Spring 初始化相关的特性（例如 @PostConstruct 注解）一起使用，从而提供更大的灵活性。
 
 ```java
 public interface InitializingBean {
-    /**
-     * Invoked by the containing {@code BeanFactory} after it has set all bean properties
-     * and satisfied {@link BeanFactoryAware}, {@code ApplicationContextAware} etc.
-     * <p>This method allows the bean instance to perform validation of its overall
-     * configuration and final initialization when all bean properties have been set.
-     * @throws Exception in the event of misconfiguration (such as failure to set an
-     * essential property) or if initialization fails for any other reason
-     */
+  
     void afterPropertiesSet() throws Exception;
 
 }
 ```
+核心实现 AbstractAutowireCapableBeanFactory(类)->initializeBean(方法)->invokeInitMethods(方法), 
+```java
+public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFactory
+		implements AutowireCapableBeanFactory{
+    //省略其余代码
+protected void invokeInitMethods(String beanName, Object bean, @Nullable RootBeanDefinition mbd)
+			throws Throwable {
 
-AbstractAutowireCapableBeanFactory(类)->initializeBean(方法)->invokeInitMethods(方法)
+		boolean isInitializingBean = (bean instanceof InitializingBean);
+        
+		if (isInitializingBean && (mbd == null || !mbd.isExternallyManagedInitMethod("afterPropertiesSet"))) {
+			if (logger.isTraceEnabled()) {
+				logger.trace("Invoking afterPropertiesSet() on bean with name '" + beanName + "'");
+			}
+			if (System.getSecurityManager() != null) {
+				try {
+					AccessController.doPrivileged((PrivilegedExceptionAction<Object>) () -> {
+						((InitializingBean) bean).afterPropertiesSet();
+						return null;
+					}, getAccessControlContext());
+				}
+				catch (PrivilegedActionException pae) {
+					throw pae.getException();
+				}
+			}
+			else {
+				((InitializingBean) bean).afterPropertiesSet();
+			}
+		}
 
-- destroy
+		if (mbd != null && bean.getClass() != NullBean.class) {
+			String initMethodName = mbd.getInitMethodName();
+			if (StringUtils.hasLength(initMethodName) &&
+					!(isInitializingBean && "afterPropertiesSet".equals(initMethodName)) &&
+					!mbd.isExternallyManagedInitMethod(initMethodName)) {
+				invokeCustomInitMethod(beanName, bean, mbd);
+			}
+		}
+	}
+}
+```
+
+
+### DisposableBean
+
+DisposableBean是Spring框架提供的一个接口，用于在Spring容器关闭时执行一些清理操作。当一个Bean实现了DisposableBean接口，Spring容器在销毁该Bean时会自动调用其destroy()方法。
+
+DisposableBean接口只定义了一个方法：
+
+void destroy() throws Exception;
+
+该方法允许Bean在销毁之前进行一些必要的清理工作，例如释放资源、关闭连接、取消注册等。实现该接口的Bean可以在destroy()方法中编写自己的清理逻辑。
+
+需要注意的是，由于DisposableBean是Spring框架提供的接口，因此使用该接口会使你的代码与Spring框架产生一定的依赖关系。如果你不希望与Spring框架耦合，可以考虑使用其他方式来实现Bean的销毁逻辑，例如使用@PreDestroy注解或实现自定义的销毁方法。
 
 ```java
 public interface DisposableBean {
-
-    /**
-     * Invoked by the containing {@code BeanFactory} on destruction of a bean.
-     * @throws Exception in case of shutdown errors. Exceptions will get logged
-     * but not rethrown to allow other beans to release their resources as well.
-     */
+    
     void destroy() throws Exception;
 
 }
 ```
 
-AbstractApplicationContext注册钩子函数,在方法结束后会执行destroy方法。
+IOC的设计思想,针对于后端开发人员,我们需要关注的
+第一个重点也就是Bean的生命周期,自定义Bean扩展,进行更高维度的抽象,例如spring的事务机制实现
+第二个重点事件机制(ApplicationListener),熟悉它就能了解Spring与Nacos,Dubbo中间件集成是如何互相通信的
 
-```java
-@Override
-public void registerShutdownHook(){
-        if(this.shutdownHook==null){
-        // No shutdown hook registered yet.
-        this.shutdownHook=new Thread(SHUTDOWN_HOOK_THREAD_NAME){
-@Override
-public void run(){
-synchronized (startupShutdownMonitor){
-        doClose();
-        }
-        }
-        };
-        Runtime.getRuntime().addShutdownHook(this.shutdownHook);
-        }
-        }
-```
-
-
+留坑待填
 
 
 
