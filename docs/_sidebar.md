@@ -15,7 +15,7 @@
   - [jar打包](Java/基本/package.md)
     - spring
         -  [IOC](Java/spring/IOC.md)
-        -  [IOC](Java/spring/IOC.md)
+        -  [recycle.md](Java/spring/recycle.md)
         -  [AOP](Java/spring/Aop.md)
         
 - Linux
