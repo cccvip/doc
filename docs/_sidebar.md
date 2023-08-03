@@ -17,6 +17,7 @@
         -  [IOC](Java/spring/IOC.md)
         -  [recycle.md](Java/spring/recycle.md)
         -  [AOP](Java/spring/Aop.md)
+        -  [Aware](Java/spring/Aware.md)
         
 - Linux
   - [cpu排查流程](Llinux/cpuError.md)
