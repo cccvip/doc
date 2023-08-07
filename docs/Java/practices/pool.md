@@ -53,8 +53,8 @@ public class ThreadPoolExecutor extends AbstractExecutorService {
 }
 ```
 ## 实战
-
-
+挖坑
+Mybaits连接池设计分析
 
 # other
-
+池化技术更多的是一种思想,最核心的点(以空间换时间)。
