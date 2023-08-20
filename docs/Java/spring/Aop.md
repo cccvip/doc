@@ -7,6 +7,10 @@ Spring AOP的优势在于它能够在不修改原有业务逻辑代码的情况�
 
 
 # how
+SpringAop创建代理的时机,有两种
+1 TargetSource 
+2 Bean实例化完成后
+
 那么Spring是如何实现Aop,我们在IOC的章节了解到Bean的生命周期,知道Spring扩展了很多接口,以便扩展。Aop自然也不例外,核心代码
 
 ```java
@@ -76,6 +80,8 @@ public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport
 AbstractAutoProxyCreator实现了两类接口，BeanFactoryAware和BeanPostProcessor
 - postProcessBeforeInstantiation：主要是处理使用了@Aspect注解的切面类，然后将切面类的所有切面方法根据使用的注解生成对应Advice，并将Advice连同切入点匹配器和切面类等信息一并封装到Advisor
 - ProcessAfterInitialization：主要负责将Advisor注入到合适的位置，创建代理（cglib或jdk)，为后面给代理进行增强实现做准备。
+
+
 
 
 动态代理主要有两种实现方式(cglib或jdk)
