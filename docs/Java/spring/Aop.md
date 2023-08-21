@@ -9,7 +9,7 @@ Spring AOP的优势在于它能够在不修改原有业务逻辑代码的情况�
 # how
 SpringAop创建代理的时机,有两种
 1 TargetSource 
-2 Bean实例化完成后
+2 Bean实例化完成后,返回Aop-Bean,而非原来的Bean
 
 那么Spring是如何实现Aop,我们在IOC的章节了解到Bean的生命周期,知道Spring扩展了很多接口,以便扩展。Aop自然也不例外,核心代码
 
