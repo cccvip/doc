@@ -429,7 +429,7 @@ public interface DisposableBean {
 ```
 
 IOC的设计思想,针对于后端开发人员,我们需要关注的
-第一个重点也就是Bean的生命周期,自定义Bean扩展,进行更高维度的抽象,例如spring的事务机制实现
+第一个重点也就是Bean的生命周期,自定义Bean扩展,进行更高维度的抽象，例如mybaits组件集成
 第二个重点事件机制(ApplicationListener),熟悉它就能了解Spring与Nacos,Dubbo中间件集成是如何互相通信的
 
 留坑待填
