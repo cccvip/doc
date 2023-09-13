@@ -11,7 +11,7 @@ SpringAop创建代理的时机,有两种
 1 TargetSource 
 2 Bean实例化完成后,返回Aop-Bean,而非原来的Bean
 
-那么Spring是如何实现Aop,我们在IOC的章节了解到Bean的生命周期,知道Spring扩展了很多接口,以便扩展。Aop自然也不例外,核心代码
+那么Spring是如何实现Aop,我们在IOC的章节了解到Bean的生命周期,了解到Aop实现原理是在Bean初始化后,生成一个Aop-Target代理类。
 
 ```java
 public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport

@@ -14,10 +14,14 @@
   - [内存调优第二篇](Java/基本/内存调优第二篇.md)
   - [jar打包](Java/基本/package.md)
     - spring
-        -  [IOC](Java/spring/IOC.md)
-        -  [recycle.md](Java/spring/recycle.md)
-        -  [AOP](Java/spring/Aop.md)
-        -  [Aware](Java/spring/Aware.md)
+        -  [前言](Java/spring/前言.md)
+        -  [基本概念](Java/spring/基本概念.md)
+        -  [Spring生命周期](Java/spring/Spring生命周期.md)
+        -  [Spring依赖注入](Java/spring/Spring依赖注入.md)
+        -  [IOC](Java/spring/SpringIOC.md)
+        -  [recycle.md](Java/spring/Spring循环依赖.md)
+        -  [AOP](Java/spring/SpringAop代理.md)
+        -  [Aware](Java/spring/SpringAware.md)
         -  [annotation](Java/spring/annotation.md)  
     - springboot
       -  [starter](Java/springboot/starter.md)
