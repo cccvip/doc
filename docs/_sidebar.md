@@ -19,12 +19,12 @@
         -  [Spring生命周期](Java/spring/Spring生命周期.md)
         -  [Spring依赖注入](Java/spring/Spring依赖注入.md)
         -  [IOC](Java/spring/SpringIOC.md)
-        -  [recycle.md](Java/spring/Spring循环依赖.md)
-        -  [AOP](Java/spring/SpringAop代理.md)
-        -  [Aware](Java/spring/SpringAware.md)
-        -  [annotation](Java/spring/annotation.md)  
+        -  [Spring循环依赖](Java/spring/Spring循环依赖.md)
+        -  [SpringAop代理](Java/spring/SpringAop代理.md)
+        -  [SpringAware](Java/spring/SpringAware.md)
+        -  [Spring常用Annotation](Java/spring/annotation.md)  
     - springboot
-      -  [starter](Java/springboot/starter.md)
+      -  [SpringBootStarter](Java/springboot/starter.md)
 - Linux
   - [cpu排查流程](Llinux/cpuError.md)
   - [常见使用指南](Llinux/guide.md)

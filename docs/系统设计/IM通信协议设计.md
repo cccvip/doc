@@ -20,6 +20,9 @@
 
 [理解IM消息的可靠性和一致性问题,以及解决方案](https://cloud.tencent.com/developer/article/1833287)
 
+[向量时钟](https://writings.sh/post/logical-clocks)
+
+
 [保证在线实时消息的可靠投递](http://www.52im.net/thread-294-1-1.html)
 
 [IM消息时序性和一致性](https://zhuanlan.zhihu.com/p/462668553)
