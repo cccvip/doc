@@ -32,7 +32,6 @@ public final class TypeHandlerRegistry {
 
 ## 架构设计能力
 
-未完待续
 
 
 
