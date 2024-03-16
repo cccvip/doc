@@ -27,9 +27,11 @@
       -  [SpringBootStarter](Java/springboot/starter.md)
     - springMvc
       -  [Mvc](Java/springMvc/Mvc.md)
-- Linux
-  - [cpu排查流程](Llinux/cpuError.md)
-  - [常见使用指南](Llinux/guide.md)
+- 实战技巧
+  - [cpu排查流程](practice/cpuError.md)
+  - [常见使用指南](practice/guide.md)
+  - [RR情况下的死锁](practice/deadlock.md)
+  - [SCG的调优分析](practice/SCG.md)
 - Redis
   - [认识数据类型](redis/初识.md)
   - [主从/集群](redis/架构.md)
