@@ -27,6 +27,8 @@
       -  [SpringBootStarter](Java/springboot/starter.md)
     - springMvc
       -  [Mvc](Java/springMvc/Mvc.md)
+    - mybatis
+      -  [基本框架](Java/mybatis/Proxy.md)
 - 实战技巧
   - [cpu排查流程](practice/cpuError.md)
   - [常见使用指南](practice/guide.md)
