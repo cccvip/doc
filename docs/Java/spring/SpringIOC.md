@@ -1,61 +1,21 @@
-# 前言
+Spring IOC（Inversion of Control，控制反转）是 Spring 的根基。它想说的事其实很简单：**对象的创建和依赖关系的维护，不要你自己干，交给容器**。你只声明"我需要什么"，容器负责把东西造好、接好。
 
-Spring IOC（Inversion of Control，控制反转）是Spring框架的一个核心特性。它是一种设计原则，通过该原则可以实现解耦和提高代码的可维护性。 Spring
-IOC的核心思想是通过反转对象的创建和依赖关系的管理，将对象的创建和依赖关系的处理从应用程序代码中解耦出来，由Spring容器来负责管理。应用程序只需要声明需要依赖的对象，而不需要关心对象的创建和管理细节。
+这篇讲清楚三件事：为什么要 IOC、`BeanDefinition` 是什么、一个 Bean 是怎么被造出来并放进容器的。
 
-具体来说，应用程序通过配置文件或注解告诉Spring容器需要创建哪些对象，以及它们之间的依赖关系。Spring容器根据这些配置信息，在应用程序运行时动态地创建和管理对象，并自动解决对象之间的依赖关系。
+> 代理不属于 IOC 的范畴——JDK/CGLIB 动态代理是 AOP 的机制，集中在 [SpringAop代理.md](SpringAop代理.md)，本文不再展开。
 
-通过使用Spring IOC，可以实现以下好处：
+# 从一个反例说起
 
-解耦：应用程序的各个模块之间通过接口进行交互，不再直接依赖具体的实现类，降低模块之间的耦合度。 可维护性：对象的创建和依赖关系的管理集中在Spring容器中，使得代码更容易理解、测试和维护。
-可扩展性：通过配置文件或注解，可以方便地添加、修改或替换对象的实现，而不需要修改应用程序的源代码。
-
-# 注解>XML
-
-随着spring的时代发展,使用XML的方式声明Bean,似乎已在旧时代了。微服务概念的兴起,SpringBoot提倡约定大于配置。减少更多的配置文件,采取就开始使用注解,例如@Autowired, @Resource。
-
-# 理解IOC
-
-*一次声明,多次使用* (默认是单例)
-
-举一个场景,基于MVC架构,controller调用service,service调用dao。
-
-```java
-import javax.annotation.Resource;
-
-public class UserController {
-    @Resource
-    UserService userService;
-
-    public void login() {
-        userService.login();
-    }
-}
-
-public class UserService {
-    @Resource
-    UserDao userDao;
-
-    public void login() {
-        userDao.login();
-    }
-}
-
-//DAO 操作SQL
-```
-
-如果不使用 @Resource，我们可能得手动 new。每次用都 new 一个新对象，对象数量暴涨，GC 频率和压力都会明显上升，影响性能。
+假设是一个 MVC 架构，controller 调 service，service 调 dao。最简单（也最糟糕）的写法是到处 `new`：
 
 ```java
 public class UserController {
     public void login() {
-        UserService userService = new UserService();
+        UserService userService = new UserService();   // 每次用都 new
         userService.login();
     }
 }
-
 public class UserService {
-
     public void login() {
         UserDao userDao = new UserDao();
         userDao.login();
@@ -63,9 +23,10 @@ public class UserService {
 }
 ```
 
-那么有人说我们可以使用cache,使用单例就能保证项目中只存在一份instance,那为啥这种方案也不行?
+问题很直接：每次用都 `new` 一个新对象，对象数量暴涨，GC 频率和压力都会明显上升。
 
-假如新增一个简单需求,统计每一个接口的耗时统计? 那么我们该如何coding?
+有人说，那用缓存/单例不就行了？**不够**。设想一个新需求：统计每个接口、每个 dao 调用的耗时。自己写就会变成这样：
+
 ```java
 public class UserController {
     public void login() {
@@ -77,370 +38,144 @@ public class UserController {
     }
 }
 ```
-那统计一下每个dao,操作SQL的执行时间呢。我们得硬编码,去做各种业务逻辑。代码冗余度会很高,在扩展性和维护性会很低,因此学习IOC的思想,看看Spring的优秀设计,对于做项目是非常重要的一件事。
 
-# 学习IOC
+每个接口、每层都要硬编码这些横切逻辑，代码冗余、难维护。**这些"和业务无关、却到处都要"的逻辑，正是 IOC/AOP 要解决的**——把对象的创建、依赖、增强都提到容器层统一处理。
+
+# 总览
+
+一句话概括 IOC 的用法：**一次声明，多次使用**（Bean 默认单例）。
+
+- 你通过注解或配置告诉容器：需要哪些对象、它们之间怎么依赖；
+- 容器在运行时把它们造好、接好，需要时按类型/名字取出来；
+- 业务代码只依赖接口，不再关心实现从哪来。
+
+随着 Spring 的发展，XML 声明 Bean 的方式基本成了旧时代的写法。微服务时代 SpringBoot 提倡"约定大于配置"，主流改用注解（`@Autowired`、`@Resource` 等）。
 
 ![img.png](_assets/createObject.png)
 
-## 基础定义
-BeanDefinition是Spring框架中的一个概念，它用于描述Spring容器中的Bean对象的定义信息。每个Bean都需要一个BeanDefinition来描述它的类型、属性、依赖关系等信息。
-BeanDefinition包含了以下属性：
-- Bean的类型：描述Bean的具体类型，可以是普通的Java类、接口、抽象类等。
-- Bean的作用域：描述Bean的生命周期和可见范围，如singleton（单例）、prototype（原型）、request（请求）、session（会话）等。
-- Bean的依赖关系：描述Bean与其他Bean之间的依赖关系，包括依赖的Bean名称、依赖的Bean类型等。
-- 属性值：描述Bean的属性值，包括属性名称和属性值。
-- 初始化方法和销毁方法：描述Bean的初始化和销毁方法。
-- 其他配置信息：描述其他的配置信息，如是否懒加载、是否自动装配等。
-- 通过BeanDefinition，Spring容器可以根据配置文件或注解等方式获取到Bean的定义信息，并根据这些信息创建、管理和销毁Bean对象。
+# BeanDefinition：Bean 的"图纸"
+
+Spring 不直接"new 对象"，而是先把每个 Bean 解析成一份**定义**——`BeanDefinition`。类型、作用域、依赖、属性值、初始化/销毁方法，都记在这份定义里；容器再照着它创建、管理、销毁 Bean。
+
 ```java
 /**
- * 简介：BeanDefinition描述了bean的实例属性以及构造方法,具体细节可以参考具体的实现类
- * A BeanDefinition describes a bean instance, which has property values,
- * constructor argument values, and further information supplied by
- * concrete implementations.
- * 重点：BeanDefinition是一个基础接口,最主要的目的是允许BeanFactoryPostProcessor修改属性值
- * <p>This is just a minimal interface: The main intention is to allow a
- * and other bean metadata.
+ * BeanDefinition 描述了一个 bean 实例的属性值、构造参数等信息。
+ * 它是一个最小接口，主要目的是允许 BeanFactoryPostProcessor 查看和修改这些元数据。
  */
 public interface BeanDefinition extends AttributeAccessor, BeanMetadataElement {
-    // Bean的作用域
     String SCOPE_SINGLETON = ConfigurableBeanFactory.SCOPE_SINGLETON;
-    
     String SCOPE_PROTOTYPE = ConfigurableBeanFactory.SCOPE_PROTOTYPE;
-    String getScope();
 
-    //Bean的依赖关系
-    void setDependsOn(@Nullable String... dependsOn);
-    
-    @Nullable
-    String[] getDependsOn();
-
-    //bean配置信息
+    String getScope();                                   // 作用域
+    void setDependsOn(@Nullable String... dependsOn);    // 依赖关系
     ConstructorArgumentValues getConstructorArgumentValues();
-    
-    //是否自动装配
-    boolean isAutowireCandidate();
+    boolean isAutowireCandidate();                       // 是否参与自动装配
 }
 ```
 
-## Class依赖关系
+`BeanDefinition` 的细节和相关的 `BeanDefinitionReader` / `BeanFactory`，见 [基本概念.md](基本概念.md)。
 
-![img.png](_assets/BeanFactoryRegister.png)
+# Bean 是怎么被造出来的
 
-## bean的创建
+## 三种实例化方式
 
-Bean 的**实例化**方式主要有三种：无参构造（反射调用）、工厂方法（`factoryMethod`）、`Supplier`；此外还可以通过 `FactoryBean` 等扩展点返回对象。
+Bean 的**实例化**主要有三种：
 
-要区分开：JDK 动态代理和 CGLIB 动态代理**不是创建 Bean 的两种实现**，它们是 AOP 生成代理对象的两种方式，通常在 Bean 初始化之后（`postProcessAfterInitialization`）发生。下面两节讲的是代理。
+1. **无参构造**（默认）：反射调用无参构造方法；
+2. **工厂方法**（`factoryMethod`）：调用一个工厂方法拿到对象；
+3. **`Supplier`**：调用 `Supplier.get()` 得到对象。
 
-### cglib动态代理
-cglib动态代理是一个基于ASM（一个开源Java字节码操作和分析框架）实现的代码生成库，用于在运行时生成代理类。相比于JDK动态代理，CGLIB动态代理更加强大和灵活，可以代理那些没有实现接口的类。
-```java
-// 目标类
-public class TargetClass {
-    public void doSomething() {
-        System.out.println("Doing something...");
-    }
-}
+此外还可以通过 **`FactoryBean`** 这类扩展点返回对象（`getObject()`），MyBatis 的 Mapper 注册就是典型例子。
 
-// 代理类
-public class ProxyClass implements MethodInterceptor {
-    private Object target;
+> 再次强调：**JDK 动态代理 / CGLIB 不是"创建 Bean 的方式"**，它们是 AOP 生成代理对象的手段，通常发生在 Bean **初始化之后**（`postProcessAfterInitialization`）。详见 [SpringAop代理.md](SpringAop代理.md)。
 
-    public Object getProxy(Object target) {
-        this.target = target;
-        Enhancer enhancer = new Enhancer();
-        enhancer.setSuperclass(this.target.getClass());
-        enhancer.setCallback(this);
-        return enhancer.create();
-    }
+## 属性填充
 
-    @Override
-    public Object intercept(Object obj, Method method, Object[] args, MethodProxy proxy) throws Throwable {
-        System.out.println("Before method invocation");
-        Object result = proxy.invokeSuper(obj, args);
-        System.out.println("After method invocation");
-        return result;
-    }
-}
-
-public class Main {
-    public static void main(String[] args) {
-        ProxyClass proxyClass = new ProxyClass();
-        TargetClass targetClass = (TargetClass) proxyClass.getProxy(new TargetClass());
-        targetClass.doSomething();
-    }
-}
-```
-### jdk动态代理
-jdk动态代理允许在运行时创建代理对象，可以在不修改原始对象的情况下，通过代理对象进行额外的操作或增加功能。
-```java
-public interface UserService {
-    void addUser(String username);
-    void deleteUser(String username);
-}
-public class UserServiceImpl implements UserService {
-    @Override
-    public void addUser(String username) {
-        System.out.println("Add user: " + username);
-    }
-
-    @Override
-    public void deleteUser(String username) {
-        System.out.println("Delete user: " + username);
-    }
-}
-
-public class UserServiceProxy implements InvocationHandler {
-    private Object target;
-
-    public UserServiceProxy(Object target) {
-        this.target = target;
-    }
-
-    @Override
-    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        System.out.println("Before invoking method: " + method.getName());
-        Object result = method.invoke(target, args);
-        System.out.println("After invoking method: " + method.getName());
-        return result;
-    }
-}
-//例子使用
-public class Main {
-    public static void main(String[] args) {
-        UserService userService = new UserServiceImpl();
-        UserService proxy = (UserService) Proxy.newProxyInstance(
-                userService.getClass().getClassLoader(),
-                userService.getClass().getInterfaces(),
-                new UserServiceProxy(userService));
-
-        proxy.addUser("Alice");
-        proxy.deleteUser("Bob");
-    }
-}
-```
-
-## bean属性填充
-
-代理的Object已创建,但具体的属性还没有填充。
-
-AbstractAutowireCapableBeanFactory->createBean->doGetBean->populateBean->applyPropertyValues
-```shell
-		try{
-                bw.setPropertyValues(new MutablePropertyValues(deepCopy));
-                }
-          catch(BeansException ex){
-              //省略
-        }
-```
-
-bean已经创建好,属性已经填充完毕,但如何将bean注册到springFactory还没有看到
-
-## bean注册spring容器中
-
-读取资源->装载->注册
-
-XmlBeanDefinitionReader->loadBeanDefinitions->registerBeanDefinitions
-
-DefaultBeanDefinitionDocumentReader->doRegisterBeanDefinitions
+代理对象（或原始对象）创建出来后，属性还没填。填充发生在 `AbstractAutowireCapableBeanFactory` 的 `populateBean`（经由 `createBean` → `doCreateBean`）里：
 
 ```java
-public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocumentReader {
-    protected void doRegisterBeanDefinitions(Element root) {
-        //省略
-        parseBeanDefinitions(root, this.delegate);
-        //省略
-    }
-
-    protected void parseBeanDefinitions(Element root, BeanDefinitionParserDelegate delegate) {
-        if (delegate.isDefaultNamespace(root)) {
-            NodeList nl = root.getChildNodes();
-            for (int i = 0; i < nl.getLength(); i++) {
-                Node node = nl.item(i);
-                if (node instanceof Element) {
-                    Element ele = (Element) node;
-                    //Bean处理,其中包含初始化,实例化
-                    if (delegate.isDefaultNamespace(ele)) {
-                        parseDefaultElement(ele, delegate);
-                    }
-                    else {
-                        delegate.parseCustomElement(ele);
-                    }
-                }
-            }
-        }
-        else {
-            delegate.parseCustomElement(root);
-        }
-    }
-
-    private void parseDefaultElement(Element ele, BeanDefinitionParserDelegate delegate) {
-        //省略
-        if(xxx){
-            
-        }
-        else if (delegate.nodeNameEquals(ele, "bean")) {
-            processBeanDefinition(ele, delegate);
-        }
-        else if (delegate.nodeNameEquals(ele, NESTED_BEANS_ELEMENT)) {
-            // 递归调用 省略
-        
-        }
-    }
-
-	protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
-	    //将Bean放到Spring容器中
-        // Register the final decorated instance.
-		BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
-		
-		//默认是空实现,依赖是Spring事件机制实现 挖个坑,后面填
-		getReaderContext().fireComponentRegistered(new BeanComponentDefinition(bdHolder));
-	}
+// populateBean 内部最终会调用 applyPropertyValues
+try {
+    bw.setPropertyValues(new MutablePropertyValues(deepCopy));
+}
+catch (BeansException ex) {
+    // ...
 }
 ```
 
+属性注入的细节（`@Autowired` 怎么找、怎么塞）见 [Spring依赖注入.md](Spring依赖注入.md)。
 
-## bean的扩展
+## 注册到 Spring 容器
 
-既然提到了IOC的思想特性是解耦,那我们需要掌握Spring的Bean的生命周期,才能知道如何对Spring进行扩展
-![img.png](_assets/beanLifeCycle.png)
-
-### BeanFactoryPostProcessor
-
-Spring的BeanFactoryPostProcessor接口是一个扩展点，它允许在Spring容器实例化和配置Bean之前对BeanDefinition进行修改。它的主要作用是对BeanDefinition进行定制化的处理，例如修改Bean的属性值、添加额外的Bean定义、移除不需要的Bean等。
-
-BeanFactoryPostProcessor在Spring容器启动阶段执行，并且在Bean实例化之前执行。它可以对应用程序上下文中的所有BeanDefinition进行操作，包括自定义BeanDefinition和Spring内部创建的BeanDefinition。
-
-通过实现BeanFactoryPostProcessor接口，可以在Spring容器启动时动态地修改BeanDefinition，从而实现对Bean的定制化处理。这种灵活性使得我们可以根据实际需求对Bean进行动态调整和配置，以满足特定的业务逻辑要求。
+Bean 建好、属性填好后，要把它的定义注册进容器。以 XML 为例（注解版由 `AnnotatedBeanDefinitionReader` 完成）：
 
 ```java
+// DefaultBeanDefinitionDocumentReader：把 <bean> 解析成 BeanDefinition 并注册
+protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
+    // 将 BeanDefinition 注册进容器
+    BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
+    // 默认空实现，依赖 Spring 事件机制——详见 事件机制（待补）
+    getReaderContext().fireComponentRegistered(new BeanComponentDefinition(bdHolder));
+}
+```
+
+# 扩展点：怎么定制 Bean 的生命周期
+
+IOC 的价值之一是"解耦"，那就要知道 Bean 的生命周期，才知道在哪儿插手。几个核心扩展点（完整链路见 [Spring生命周期.md](Spring生命周期.md)）：
+
+| 扩展点 | 作用时机 | 做什么 |
+|---|---|---|
+| `BeanFactoryPostProcessor` | Bean 实例化**之前** | 修改 BeanDefinition（图纸） |
+| `BeanPostProcessor` | Bean **初始化前后** | 修改实例；AOP 代理在此生成 |
+| `InitializingBean` | **初始化**时 | `afterPropertiesSet()` 自定义初始化 |
+| `DisposableBean` | **销毁**时 | `destroy()` 释放资源 |
+
+```java
+// 在 Bean 实例化之前修改 BeanDefinition
 @FunctionalInterface
 public interface BeanFactoryPostProcessor {
     void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException;
 }
 
-```
-
-### BeanPostProcessor
-
-Spring的BeanPostProcessor是一个特殊的接口，它允许在 Bean **初始化**之前和之后对它进行自定义处理（注意是初始化，不是实例化）。
-
-BeanPostProcessor接口定义了两个用于处理Bean的方法：
-
-postProcessBeforeInitialization(Object bean, String beanName)：在初始化之前对Bean进行自定义处理。可以在此方法中修改Bean的属性值或执行一些自定义逻辑。
-
-postProcessAfterInitialization(Object bean, String beanName)：在初始化之后对Bean进行自定义处理。可以在此方法中执行一些额外的初始化操作，或者对Bean进行包装。
-
-BeanPostProcessor接口的实现类可以注册到Spring容器中，它们将自动应用于所有的Bean。可以使用BeanPostProcessor来实现一些通用的逻辑，例如日志记录、性能监控、事务管理等。
-
-```java
+// 在 Bean 初始化前/后自定义处理
 public interface BeanPostProcessor {
+    @Nullable default Object postProcessBeforeInitialization(Object bean, String beanName) { return bean; }
+    @Nullable default Object postProcessAfterInitialization(Object bean, String beanName) { return bean; }
+}
+```
 
-    @Nullable
-    default Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
-        return bean;
+`InitializingBean` 的调用在 `AbstractAutowireCapableBeanFactory.invokeInitMethods`：
+
+```java
+protected void invokeInitMethods(String beanName, Object bean, @Nullable RootBeanDefinition mbd) throws Throwable {
+    boolean isInitializingBean = (bean instanceof InitializingBean);
+    if (isInitializingBean && (mbd == null || !mbd.isExternallyManagedInitMethod("afterPropertiesSet"))) {
+        // ① 如果实现了 InitializingBean，先调 afterPropertiesSet()
+        ((InitializingBean) bean).afterPropertiesSet();
     }
-
-    @Nullable
-    default Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
-        return bean;
+    if (mbd != null && bean.getClass() != NullBean.class) {
+        String initMethodName = mbd.getInitMethodName();
+        // ② 再调 BeanDefinition 里指定的 init-method
+        if (StringUtils.hasLength(initMethodName) &&
+                !(isInitializingBean && "afterPropertiesSet".equals(initMethodName)) &&
+                !mbd.isExternallyManagedInitMethod(initMethodName)) {
+            invokeCustomInitMethod(beanName, bean, mbd);
+        }
     }
 }
 ```
 
-### InitializingBean
+> IOC 两个值得重点投入的方向：一是 **Bean 的生命周期与自定义扩展**（比如集成 MyBatis 组件）；二是**事件机制**（`ApplicationListener`），理解了它，就明白 Spring 和 Nacos、Dubbo 这些中间件是怎么互相通信的。
 
-InitializingBean 是 Spring 框架中的一个接口，它定义了一个用于初始化 bean 的方法。
-当一个 bean 实现了 InitializingBean 接口并且被 Spring 容器创建时，容器会调用 afterPropertiesSet() 方法来完成 bean 的初始化工作。
+# 小结
 
-InitializingBean 接口的作用是允许 bean 在完成属性注入后执行一些自定义的初始化逻辑。通常情况下，我们可以在 afterPropertiesSet() 方法中实现一些需要在 bean 初始化阶段进行的操作，比如数据源的初始化、资源的加载等等。
+1. **IOC 解决什么？** 把对象的创建与依赖维护从业务代码里挪进容器，降低耦合、方便替换与测试。
+2. **为什么要 BeanDefinition？** 容器先把 Bean 解析成"图纸"，再照图施工，这样才有 `BeanFactoryPostProcessor` 等修改定义的机会。
+3. **Bean 有哪几种实例化方式？** 无参构造、工厂方法（`factoryMethod`）、`Supplier`；`FactoryBean` 是另一种扩展。
+4. **动态代理算创建 Bean 的方式吗？** 不算，它是 AOP 生成代理的手段，发生在初始化之后。
+5. **几个扩展点的时机？** `BeanFactoryPostProcessor`（实例化前，改定义）、`BeanPostProcessor`（初始化前后，改实例）、`InitializingBean`（初始化）、`DisposableBean`（销毁）。
 
-使用 InitializingBean 接口的优点是，它提供了一个标准化的初始化方法，可以让开发人员在 bean 初始化阶段进行一些通用的操作，而不需要显式地在代码中调用初始化方法。'
-另外，InitializingBean 接口还可以与其他 Spring 初始化相关的特性（例如 @PostConstruct 注解）一起使用，从而提供更大的灵活性。
+# 参考
 
-```java
-public interface InitializingBean {
-  
-    void afterPropertiesSet() throws Exception;
-
-}
-```
-核心实现 AbstractAutowireCapableBeanFactory(类)->initializeBean(方法)->invokeInitMethods(方法), 
-```java
-public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFactory
-		implements AutowireCapableBeanFactory{
-    //省略其余代码
-protected void invokeInitMethods(String beanName, Object bean, @Nullable RootBeanDefinition mbd)
-			throws Throwable {
-
-		boolean isInitializingBean = (bean instanceof InitializingBean);
-        
-		if (isInitializingBean && (mbd == null || !mbd.isExternallyManagedInitMethod("afterPropertiesSet"))) {
-			if (logger.isTraceEnabled()) {
-				logger.trace("Invoking afterPropertiesSet() on bean with name '" + beanName + "'");
-			}
-			if (System.getSecurityManager() != null) {
-				try {
-					AccessController.doPrivileged((PrivilegedExceptionAction<Object>) () -> {
-						((InitializingBean) bean).afterPropertiesSet();
-						return null;
-					}, getAccessControlContext());
-				}
-				catch (PrivilegedActionException pae) {
-					throw pae.getException();
-				}
-			}
-			else {
-				((InitializingBean) bean).afterPropertiesSet();
-			}
-		}
-
-		if (mbd != null && bean.getClass() != NullBean.class) {
-			String initMethodName = mbd.getInitMethodName();
-			if (StringUtils.hasLength(initMethodName) &&
-					!(isInitializingBean && "afterPropertiesSet".equals(initMethodName)) &&
-					!mbd.isExternallyManagedInitMethod(initMethodName)) {
-				invokeCustomInitMethod(beanName, bean, mbd);
-			}
-		}
-	}
-}
-```
-
-
-### DisposableBean
-
-DisposableBean是Spring框架提供的一个接口，用于在Spring容器关闭时执行一些清理操作。当一个Bean实现了DisposableBean接口，Spring容器在销毁该Bean时会自动调用其destroy()方法。
-
-DisposableBean接口只定义了一个方法：
-
-void destroy() throws Exception;
-
-该方法允许Bean在销毁之前进行一些必要的清理工作，例如释放资源、关闭连接、取消注册等。实现该接口的Bean可以在destroy()方法中编写自己的清理逻辑。
-
-需要注意的是，由于DisposableBean是Spring框架提供的接口，因此使用该接口会使你的代码与Spring框架产生一定的依赖关系。如果你不希望与Spring框架耦合，可以考虑使用其他方式来实现Bean的销毁逻辑，例如使用@PreDestroy注解或实现自定义的销毁方法。
-
-```java
-public interface DisposableBean {
-    
-    void destroy() throws Exception;
-
-}
-```
-
-IOC的设计思想,针对于后端开发人员,我们需要关注的
-第一个重点也就是Bean的生命周期,自定义Bean扩展,进行更高维度的抽象，例如mybaits组件集成
-第二个重点事件机制(ApplicationListener),熟悉它就能了解Spring与Nacos,Dubbo中间件集成是如何互相通信的
-
-留坑待填
-
-
-
-
-
-
-
-
-
+- Spring 5.x 源码：`BeanDefinition`、`AbstractAutowireCapableBeanFactory`、`DefaultBeanDefinitionDocumentReader`
+- [基本概念.md](基本概念.md)、[Spring生命周期.md](Spring生命周期.md)、[SpringAop代理.md](SpringAop代理.md)

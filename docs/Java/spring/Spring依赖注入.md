@@ -1,95 +1,111 @@
-依赖注入是一个非常抽象的概念,那我们看看chatgpt是如何解释这个词的呢
-Spring的依赖注入（Dependency Injection，简称DI）是一种设计模式，它允许对象之间的依赖关系由容器来管理和注入，而不是由对象自己创建和管理。依赖注入的核心思想是将对象之间的依赖关系解耦，使得代码更加灵活、可维护和可测试。
+依赖注入（Dependency Injection，DI）是个很抽象的词。一句话说：**对象之间的依赖关系，不由对象自己创建，而由容器注入**。你只声明"我需要一个 X"，容器负责把 X 造好、塞进来。
 
-在Spring中，依赖注入通过容器自动将对象之间的依赖关系注入到对象中，而不需要手动创建和管理这些对象。通过使用注解或配置文件，我们可以告诉Spring容器哪些对象需要依赖注入，以及如何注入这些依赖。
+Spring 的注入靠注解 + 反射。这篇以 `@Autowired` 为例，把"注入点怎么找、依赖怎么塞"这条链走一遍。
 
-依赖注入的优势包括：
-- 降低了对象之间的耦合度，使得代码更加模块化和可扩展。
-- 提高了代码的可测试性，可以更方便地进行单元测试。
-- 提高了代码的可读性和可维护性，将对象之间的依赖关系集中管理，使得代码更加清晰。
-总的来说，Spring的依赖注入是一种通过容器自动管理对象之间依赖关系的机制，它能够提供更加灵活、可维护和可测试的代码。
+> 前面 [Spring生命周期.md](Spring生命周期.md) 讲到"属性填充"这一步——`@Autowired` 的真正实现就在这里。
 
-以@Autowired注解为例,AutowiredAnnotationBeanPostProcessor为注解的实现类,@Autowired作用范围可以是方法,构造方法,属性上
-````java
-/**
- * AutowiredAnnotationBeanPostProcessor
- */
+# 总览
+
+`@Autowired` 的处理者是 **`AutowiredAnnotationBeanPostProcessor`**，它作用在 Bean 的属性填充阶段。要实现自动注入，其实就两件事：
+
+1. **找出注入点**：Bean 里哪些字段/方法需要注入？
+2. **执行注入**：这些依赖按什么方式（byName / byType / 构造器）塞进去？
+
+`@Autowired` 可以作用在字段、方法、构造方法、参数上：
+
+```java
 @Target({ElementType.CONSTRUCTOR, ElementType.METHOD, ElementType.PARAMETER, ElementType.FIELD, ElementType.ANNOTATION_TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface Autowired {
-	boolean required() default true;
+    boolean required() default true;     // 找不到依赖时是否报错
 }
-````
-我们得思考一件事要实现此功能,需要完成怎样一件事。
-1. 我们得知道Bean中,哪些属性需要注入
-2. 这些属性以一种什么样的方式注入(byName、byType、构造方法注入)
+```
+
+# 谁来处理：AutowiredAnnotationBeanPostProcessor
+
+它实现了多个接口，关键的是 `SmartInstantiationAwareBeanPostProcessor` 和 `MergedBeanDefinitionPostProcessor`：
+
 ```java
 public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationAwareBeanPostProcessor,
-		MergedBeanDefinitionPostProcessor, PriorityOrdered, BeanFactoryAware {
-            
-    //寻找需要注入的属性或者方法等
+        MergedBeanDefinitionPostProcessor, PriorityOrdered, BeanFactoryAware {
+
+    // ① 在属性赋值前，收集注入点
     @Override
     public void postProcessMergedBeanDefinition(RootBeanDefinition beanDefinition, Class<?> beanType, String beanName) {
         InjectionMetadata metadata = findAutowiringMetadata(beanName, beanType, null);
         metadata.checkConfigMembers(beanDefinition);
     }
 
-    //赋值    
+    // ② 真正的注入：把依赖塞进去
     @Override
-	public PropertyValues postProcessProperties(PropertyValues pvs, Object bean, String beanName) {
-		InjectionMetadata metadata = findAutowiringMetadata(beanName, bean.getClass(), pvs);
-		try {
-			metadata.inject(bean, beanName, pvs);
-		}
-		catch (BeanCreationException ex) {
-			throw ex;
-		}
-		catch (Throwable ex) {
-			throw new BeanCreationException(beanName, "Injection of autowired dependencies failed", ex);
-		}
-		return pvs;
-	}
+    public PropertyValues postProcessProperties(PropertyValues pvs, Object bean, String beanName) {
+        InjectionMetadata metadata = findAutowiringMetadata(beanName, bean.getClass(), pvs);
+        try {
+            metadata.inject(bean, beanName, pvs);
+        } catch (BeanCreationException ex) {
+            throw ex;
+        } catch (Throwable ex) {
+            throw new BeanCreationException(beanName, "Injection of autowired dependencies failed", ex);
+        }
+        return pvs;
+    }
 }
 ```
-注入点的执行流程
-1. 遍历当前类的所有的属性字段Field
-2. 查看字段上是否存在@Autowired、@Value、@Inject中的其中任意一个，存在则认为该字段是一个注入点
-3. 如果字段是static的，则不进行注入
-4. 获取@Autowired中的required属性的值
-5. 将字段信息构造成一个AutowiredFieldElement对象，作为一个注入点对象添加到currElements集合中。
-6. 遍历当前类的所有方法Method
-7. 判断当前Method是否是桥接方法(主要用途是支持泛型)，如果是找到原方法
-8. 查看方法上是否存在@Autowired、@Value、@Inject中的其中任意一个，存在则认为该方法是一个注入点
-9. 如果方法是static的，则不进行注入
-10. 获取@Autowired中的required属性的值
-11. 将方法信息构造成一个AutowiredMethodElement对象，作为一个注入点对象添加到currElements集合中。
-12. 遍历完当前类的字段和方法后，将遍历父类的，直到没有父类。
-13. 最后将currElements集合封装成一个InjectionMetadata对象，作为当前Bean对于的注入点集合对象，并缓存。
 
+一个负责**找**（`postProcessMergedBeanDefinition`），一个负责**塞**（`postProcessProperties`）。
 
-## 注入点注入
+# 注入点是怎么找出来的
 
-### 字段注入
+`findAutowiringMetadata` 收集注入点的过程：
 
-1. 遍历所有的AutowiredFieldElement对象。
-2. 将对应的字段封装为DependencyDescriptor对象。
-3. 调用BeanFactory的resolveDependency()方法，传入DependencyDescriptor对象，进行依赖查找，找到当前字段所匹配的Bean对象。
-4. 将DependencyDescriptor对象和所找到的结果对象beanName封装成一个ShortcutDependencyDescriptor对象作为缓存，比如如果当前Bean是原型Bean，那么下次再来创建该Bean时，就可以直接拿缓存的结果对象beanName去BeanFactory中去那bean对象了，不用再次进行查找了
-5. 利用反射将结果对象赋值给字段。
+1. 遍历当前类的**所有字段** `Field`；
+2. 字段上有 `@Autowired` / `@Value` / `@Inject` 中任意一个，就算一个注入点；
+3. 如果字段是 `static` 的，跳过；
+4. 读取 `@Autowired` 的 `required` 属性；
+5. 把字段信息封成 `AutowiredFieldElement`，加入 `currElements`；
+6. 遍历当前类的**所有方法** `Method`；
+7. 若是桥接方法（桥接方法主要用于支持泛型），先找到原方法；
+8. 方法上有上述三个注解之一，就算一个注入点；
+9. 方法如果是 `static` 的，跳过；
+10. 读取 `required`；
+11. 把方法信息封成 `AutowiredMethodElement`，加入 `currElements`；
+12. 当前类的字段和方法处理完，**继续处理父类**，直到没有父类；
+13. 最后把 `currElements` 封装成 `InjectionMetadata`，作为当前 Bean 的注入点集合，并**缓存**。
 
+# 依赖是怎么塞进去的
 
-### Set方法注入
-1. 遍历所有的AutowiredMethodElement对象
-2. 遍历将对应的方法的参数，将每个参数封装成MethodParameter对象
-3. 将MethodParameter对象封装为DependencyDescriptor对象
-4. 调用BeanFactory的resolveDependency()方法，传入DependencyDescriptor对象，进行依赖查找，找到当前方法参数所匹配的Bean对象。
-5. 将DependencyDescriptor对象和所找到的结果对象beanName封装成一个ShortcutDependencyDescriptor对象作为缓存，比如如果当前Bean是原型Bean，那么下次再来创建该Bean时，就可以直接拿缓存的结果对象beanName去BeanFactory中去那bean对象了，不用再次进行查找了
-6. 利用反射将找到的所有结果对象传给当前方法，并执行。
+## 字段注入
 
+1. 遍历所有 `AutowiredFieldElement`；
+2. 把字段封装成 `DependencyDescriptor`；
+3. 调用 BeanFactory 的 **`resolveDependency()`** 做依赖查找，找到匹配的 Bean；
+4. 把 `DependencyDescriptor` 和查到的 Bean 封装成缓存（`ShortcutDependencyDescriptor`）——如果当前是原型 Bean，下次创建时可直接用缓存，省去再次查找；
+5. 用**反射**把结果赋给字段。
 
+## Setter 方法注入
 
+1. 遍历所有 `AutowiredMethodElement`；
+2. 遍历方法参数，每个参数封装成 `MethodParameter`；
+3. `MethodParameter` 再封装成 `DependencyDescriptor`；
+4. 调用 `resolveDependency()` 找到匹配的 Bean；
+5. 同样做结果缓存；
+6. 用**反射**把找到的对象作为参数传给方法并执行。
 
+## 构造器注入
 
+构造器注入的对象在**实例化阶段**就要准备好（不像字段注入在属性填充阶段），所以它和循环依赖的关系更微妙——构造器的循环依赖 Spring 无法解决，原因见 [Spring循环依赖.md](Spring循环依赖.md)。
 
+# 小结
 
+1. **`@Autowired` 的处理者是谁？** `AutowiredAnnotationBeanPostProcessor`，作用在属性填充阶段。
+2. **它分两步做什么？** `postProcessMergedBeanDefinition` 收集注入点，`postProcessProperties` 执行注入。
+3. **哪些算注入点？** 带 `@Autowired` / `@Value` / `@Inject` 的非 `static` 字段和方法。
+4. **注入点范围？** 先本类，再逐级往上找父类。
+5. **怎么找到依赖？** 把字段/参数封装成 `DependencyDescriptor`，交给 `BeanFactory.resolveDependency()` 按类型（必要时按名）查找。
+6. **怎么赋值？** 反射：字段用 `Field.set`，方法用 `Method.invoke`。
+
+# 参考
+
+- Spring 5.x 源码：`AutowiredAnnotationBeanPostProcessor`、`DefaultListableBeanFactory.resolveDependency`
+- [Spring生命周期.md](Spring生命周期.md)、[Spring循环依赖.md](Spring循环依赖.md)

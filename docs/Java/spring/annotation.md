@@ -1,8 +1,6 @@
-# 常见注解
+> 这篇从"注解"的角度看 SpringMVC：`@RestController`、`@Controller`、`@ResponseBody`、`@RequestMapping` 这些注解长什么样、怎么被解析生效。**请求进来之后的完整流程**（`doDispatch`、`HandlerMapping`、参数解析、响应写回）在 [springMvc/Mvc.md](../springMvc/Mvc.md) 里已经逐行讲过，本文不重复。
 
-为了更好的理解Spring的IOC与AOP特性,而不只是浮在表面。下面将介绍一些常见注解,以及如何debug代码,明白注解的实现。
-
-举一个例子
+看注解不能只看用法，要能往下追到实现。这篇的目标就是：给一个注解，你能说清它是怎么生效的。
 
 ```java
 import javax.annotation.Resource;
@@ -18,236 +16,120 @@ public class AppController {
     public String ping() {
         return "pong";
     }
-
 }
-
 ```
 
-## @RestController
+# @RestController
 
-@RestController注解是一个特殊的@Controller，它包含了@ResponseBody注解。这意味着我们无需在每个方法上都添加@ResponseBody注解，因为当类使用@RestController注解时，就默认为所有方法都使用了@ResponseBody。
-所以简单来说，@RestController是帮助我们更方便的创建RESTful Web服务的一种快捷方式
-
-### how
-
-@RestController由@Controller跟@ResponseBody,两个注解组成,
-
-- @ResponseBody是标识当前请求是以restful风格返回JSON数据。
-- @Controller 从继承 @Component,标识当前Bean需要被扫描,需要被Spring管理
+`@RestController` 是 `@Controller` + `@ResponseBody` 的组合注解：类上标了它，就相当于所有方法都加了 `@ResponseBody`，不用每个方法再写一遍。
 
 ```java
-
 @Controller
 @ResponseBody
 public @interface RestController {
-
-    @AliasFor(annotation = Controller.class)
+    @AliasFor(annotation = Controller.class)   // value 转发给 @Controller 的 value
     String value() default "";
 }
 
 @Component
 public @interface Controller {
-    @AliasFor(annotation = Component.class)
+    @AliasFor(annotation = Component.class)    // value 转发给 @Component
     String value() default "";
 }
-
 ```
 
-## @RequestMapping
+两个细节：
 
-要理解RequestMapping是如何实现,就是要学会理解SpringMvc是如何管理以及映射Mapping。
-![DispatcheServlet](_assets/DispatcheServlet.png)
+- `@ResponseBody`：标识返回值以 RESTful 风格（JSON）写回响应体；
+- `@Controller`：它自身带 `@Component`，所以被扫描成 Spring 管理的 Bean；
+- **`@AliasFor`**：把本注解的属性和被组合注解的属性关联起来，这就是"组合注解"的实现基础。
 
-### DispatcheServlet
+# @RequestMapping 是怎么生效的
 
-DispatchServlet核心的逻辑实现,主要由FrameworkServlet实现,
+要理解 `@RequestMapping`，得理解 SpringMVC 怎么**注册**和**匹配**映射。
 
-```java
-public abstract class FrameworkServlet extends HttpServletBean implements ApplicationContextAware {
+## 注册：RequestMappingHandlerMapping
 
-    protected final void initServletBean() throws ServletException {
-        //创建Spring ApplictionContext
-        this.webApplicationContext = initWebApplicationContext();
+`@RequestMapping` 方法的注册发生在 `RequestMappingHandlerMapping` 初始化时：
 
-    }
-
-    protected WebApplicationContext initWebApplicationContext() {
-
-        //手动触发刷新
-        if (!this.refreshEventReceived) {
-
-            synchronized (this.onRefreshMonitor) {
-                onRefresh(wac);
-            }
-        }
-    }
-
-}
-
-public class DispatcherServlet extends FrameworkServlet {
-
-    @Override
-    protected void onRefresh(ApplicationContext context) {
-        initStrategies(context);
-    }
-
-    protected void initStrategies(ApplicationContext context) {
-        //资源映射
-        initMultipartResolver(context);
-        initLocaleResolver(context);
-        initThemeResolver(context);
-        //请求链路
-        initHandlerMappings(context);
-        initHandlerAdapters(context);
-        initHandlerExceptionResolvers(context);
-        //视图
-        initRequestToViewNameTranslator(context);
-        initViewResolvers(context);
-        initFlashMapManager(context);
-    }
-
-    //initHandlerMapping方法如下，按照优先级排序后的HanlderMappings, 将来匹配时按照优先级最高的HanderMapping进行处理。
-    private void initHandlerMappings(ApplicationContext context) {
-        this.handlerMappings = null;
-        //省略
-        // Find all HandlerMappings in the ApplicationContext, including ancestor contexts.
-        Map<String, HandlerMapping> matchingBeans =
-                BeanFactoryUtils.beansOfTypeIncludingAncestors(context, HandlerMapping.class, true, false);
-        if (!matchingBeans.isEmpty()) {
-            this.handlerMappings = new ArrayList<>(matchingBeans.values());
-            // We keep HandlerMappings in sorted order.
-            AnnotationAwareOrderComparator.sort(this.handlerMappings);
-        }
-        //省略
-    }
-}
-```
-
-默认已经实现的HandlerMapping,![mappering](_assets/mappering.png)
-回到本文正题,@RequestMapping是如何将方法注入到Spring中,核心实现方法是RequestMappingHandlerMapping
 ```java
 public class RequestMappingHandlerMapping extends RequestMappingInfoHandlerMapping
         implements MatchableHandlerMapping, EmbeddedValueResolverAware {
 
-        @Override
-        @SuppressWarnings("deprecation")
-        public void afterPropertiesSet() {
-            //
-            super.afterPropertiesSet();
-        }
+    @Override
+    public void afterPropertiesSet() {
+        super.afterPropertiesSet();     // 触发下面的扫描
+    }
 }
 
 public abstract class AbstractHandlerMethodMapping<T> extends AbstractHandlerMapping implements InitializingBean {
+
     private final Map<T, MappingRegistration<T>> registry = new HashMap<>();
+
     @Override
     public void afterPropertiesSet() {
-        initHandlerMethods();
+        initHandlerMethods();           // 扫描所有 Handler 的方法
     }
-    
+
     protected void initHandlerMethods() {
         for (String beanName : getCandidateBeanNames()) {
             if (!beanName.startsWith(SCOPED_TARGET_NAME_PREFIX)) {
                 processCandidateBean(beanName);
             }
         }
-        handlerMethodsInitialized(getHandlerMethods());
     }
 
     protected void processCandidateBean(String beanName) {
-        //省略 isHandler 判断当前Bean是否属于有Controller或者RequestMapping注解
+        // 判断这个 Bean 是不是带 @Controller / @RequestMapping
         if (beanType != null && isHandler(beanType)) {
-            detectHandlerMethods(beanName);
+            detectHandlerMethods(beanName);      // 解析它的方法并注册
         }
     }
-    
+
     protected boolean isHandler(Class<?> beanType) {
         return (AnnotatedElementUtils.hasAnnotation(beanType, Controller.class) ||
                 AnnotatedElementUtils.hasAnnotation(beanType, RequestMapping.class));
     }
-    //省略其他方法 最终将其存放到registry中
+
+    // 最终每个 (映射信息 → 方法) 都存进 registry
     protected void registerHandlerMethod(Object handler, Method method, T mapping) {
         this.mappingRegistry.register(mapping, handler, method);
     }
 }
 ```
-如何存的介绍到这,那DispatchServlet是如何执行的呢
-### 请求分发
-DispatchServlet中doDispatch方法是真正处理请求的核心方法,
-默认的处理逻辑RequestMappingHandlerAdapter,
 
-```java
-public class RequestMappingHandlerAdapter extends AbstractHandlerMethodAdapter
-        implements BeanFactoryAware, InitializingBean {
-    
-    protected ModelAndView handleInternal(HttpServletRequest request,
-                                          HttpServletResponse response, HandlerMethod handlerMethod) throws Exception {
+一句话：**启动时扫描 → 判断哪些 Bean 是 Handler → 把它的 `@RequestMapping` 方法注册进映射表**。
 
-        ModelAndView mav;
-        checkRequest(request);
-        //反射执行并且获取结果
-        // Execute invokeHandlerMethod in synchronized block if required.
-        if (this.synchronizeOnSession) {
-            HttpSession session = request.getSession(false);
-            if (session != null) {
-                Object mutex = WebUtils.getSessionMutex(session);
-                synchronized (mutex) {
-                    
-                    mav = invokeHandlerMethod(request, response, handlerMethod);
-                }
-            } else {
-                // No HttpSession available -> no mutex necessary
-                mav = invokeHandlerMethod(request, response, handlerMethod);
-            }
-        } else {
-            // No synchronization on session demanded at all...
-            mav = invokeHandlerMethod(request, response, handlerMethod);
-        }
-        
-        return mav;
-    }
-}
-```
-invokeHandlerMethod 主要做的就是封装返回的ModelView,以及处理业务逻辑获取结果
-```java
-//省略很多无关的代码
-public class InvocableHandlerMethod extends HandlerMethod {
-    @Nullable
-    protected Object doInvoke(Object... args) throws Exception {
-        Method method = getBridgedMethod();
-        ReflectionUtils.makeAccessible(method);
-        return method.invoke(getBean(), args);
-    }
-}
-```
-到此,Mapping是如何映射,Mvc的工作流程有一个初步的认识。最重要的是理解了,为什么@Controller或者@RequestMapping是如何生效
+## 匹配与执行
 
-### 每日一题
-如果出现以下使用办法,回抛出404、找不到路由。想想为什么？
+请求进来后，怎么从一个 URL 找到这个方法、又怎么把响应写出去——完整链条（`initStrategies`、`doDispatch`、`lookupHandlerMethod`、参数解析、`@ResponseBody` 写回）都在 [springMvc/Mvc.md](../springMvc/Mvc.md)。
+
+那里面的 `RequestMappingHandlerMapping` / `RequestMappingHandlerAdapter` 就是这里注册的映射在运行时的消费方。
+
+# 每日一题
+
+下面这种写法会 **404**，想想为什么？
+
 ```java
 @RestController
-public abstract class AppController{
-    
+public abstract class AppController {
 }
 ```
-提示：Spring管理Bean一定是class类,如果是abstract class 或者 interface,是不会被扫描为Bean。想想为什么要这么做,回想一下三级缓存。
 
+提示：Spring 管理的"Bean"必须是一个**可实例化的 class**。如果是 `abstract class` 或 `interface`，它**不会被扫描为 Bean**——没有 Bean，自然没有注册映射，请求也就匹配不到。
 
+> 再想一层：回想一下三级缓存——Spring 要的是能被实例化、能被代理的**具体类**。
 
+# 小结
 
+1. **`@RestController` 是什么？** `@Controller` + `@ResponseBody` 的组合注解。
+2. **`@Controller` 为什么会被扫描？** 它自身带 `@Component`。
+3. **`@AliasFor` 干什么？** 把组合注解的属性转发给被组合的注解（如 `value` → `@Controller.value`）。
+4. **`@RequestMapping` 什么时候注册的？** `RequestMappingHandlerMapping` 初始化时，`afterPropertiesSet → initHandlerMethods` 扫描并注册进 `registry`。
+5. **请求进来后怎么执行？** 见 [springMvc/Mvc.md](../springMvc/Mvc.md)。
+6. **抽象类上的 `@RestController` 为什么 404？** 抽象类/接口不会被扫描成 Bean，也就没有映射注册。
 
+# 参考
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- Spring 5.x 源码：`RestController`、`AbstractHandlerMethodMapping`
+- [springMvc/Mvc.md](../springMvc/Mvc.md)（请求分发全流程）
