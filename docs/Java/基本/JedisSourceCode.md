@@ -15,14 +15,15 @@ Jedis的Pool配置如下
 ```
 弄清楚redis的配置能更好的帮助我们开发
 
-## MaxTotal(最大连接数),MaxIdle(业务实际使用的连接数)，MinIdle(最小空闲连接数)
+## MaxTotal(最大连接数)，MaxIdle(最大空闲连接数)，MinIdle(最小空闲连接数)
 - 资源限制：nodes * maxTotal不能超过Redis的最大连接数
 
-计算:
-假如redis每次命令request+response时间是1ms, 1s/1ms。业务方希望达到的QPS是50000, 50000/1ms*1000=50。 MaxIdle=50
+计算：
+假设 redis 每次命令 request+response 的往返时间（RTT）是 1ms，则单连接 QPS ≈ 1000/1 = 1000。业务目标 QPS 是 50000，所需连接数 ≈ 50000 / 1000 = 50，所以应设 `MaxTotal ≈ 50`（不是 MaxIdle）。
 
-建议设置:
-MaxTotal>=MaxIdle ; MaxIdle/100|MaxIdle/10=MinIdle
+建议设置：
+- `MaxTotal >= MaxIdle`
+- `MinIdle` 取 MaxIdle 的 1/10 ~ 1/100（例如 MaxIdle=50 时，MinIdle 设为 1~5）
 
 
 ## TestOnBorrow

@@ -8,7 +8,7 @@
 老年代空间不足，老年代内存使用率过高，达到一定比例，也会触发 Full GC。
 - 空间分配担保失败（ Promotion Failure），新生代的 To 区放不下从 Eden 和 From 拷贝过来对象，或者新生代对象 GC 年龄到达阈值需要晋升这两种情况，老年代如果放不下的话都会触发 Full GC。
 - 方法区内存空间不足：如果方法区由永久代实现，永久代空间不足 Full GC。
-- System.gc()等命令触发：System.gc()、jmap -dump 等命令会触发 full gc。
+- System.gc() 等命令触发：System.gc() 一定会触发 Full GC；jmap -dump 只有在带 `:live`（如 `jmap -dump:live,format=b,file=...`）时才会先触发一次 Full GC。
 
 
 #### 对象什么时候会进入老年代？

@@ -22,7 +22,7 @@ addClasspath: 是否在manifest文件中添加classpath。默认为false。如�
 Manifest-Version: 1.0                                                                                                                                         
 Archiver-Version: Plexus Archiver
 Built-By: michealyang
-Class-Path: libs/jetty-server-9.4.7.v20170914.jar lib/javax.servlet-api
+Class-Path: libs/jetty-server-9.4.7.v20170914.jar libs/javax.servlet-api
  -3.1.0.jar libs/jetty-http-9.4.7.v20170914.jar 
 Created-By: Apache Maven 3.3.9
 Build-Jdk: 1.8.0_162-ea
@@ -59,7 +59,7 @@ mvn package
 打包结果是，自己写的Class在jar包中，所依赖的jar包在libs目录中:
 
 ├── embedded-jetty-1.0.0-SNAPSHOT.jar
-├── lib
+├── libs
 │ ├── jetty-server-9.4.7.v20170914.jar
 │ ├── jetty-http-9.4.7.v20170914.jar
 

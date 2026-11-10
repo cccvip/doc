@@ -69,9 +69,9 @@
 
 | 文件 | 问题 | 状态 |
 |---|---|---|
-| 基本/JedisSourceCode.md | MaxIdle 释义错误 | ⬜ |
-| 基本/JedisSourceCode.md | 连接数公式量纲错误 | ⬜ |
-| 基本/GC.md | jmap -dump 触发 Full GC 需 :live | ⬜ |
-| 基本/内存调优第二篇.md | "介入指标"列的是健康值，逻辑反了 | ⬜ |
-| 基本/内存调优.md | "younggc 很多"与"10 分钟一次"矛盾 | ⬜ |
-| 基本/package.md | classpathPrefix `libs/` 与示例 `lib/` 不一致 | ⬜ |
+| 基本/JedisSourceCode.md | MaxIdle 释义错误 | ✅ |
+| 基本/JedisSourceCode.md | 连接数公式量纲错误 | ✅ |
+| 基本/GC.md | jmap -dump 触发 Full GC 需 :live | ✅ |
+| 基本/内存调优第二篇.md | "介入指标"列的是健康值，逻辑反了 | ✅ |
+| 基本/内存调优.md | "younggc 很多"与"10 分钟一次"矛盾 | ✅ |
+| 基本/package.md | classpathPrefix `libs/` 与示例 `lib/` 不一致 | ✅ |
