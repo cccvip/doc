@@ -28,13 +28,15 @@
 
 | 文件 | 问题 | 状态 |
 |---|---|---|
-| 基本/注解.md | 只定义 value，却使用 number() | ⬜ |
-| 基本/注解.md | 缺 @Retention(RUNTIME)、@Target，运行时 getAnnotation 取不到 | ⬜ |
-| 基本/反射.md | 同源错误（number、@Retention） | ⬜ |
-| spring/SpringIOC.md | `UserDao userService` / `userDao` 变量名不一致，编译错误 | ⬜ |
-| spring/SpringIOC.md | 把"Bean 实例化"与"JDK/CGLIB 代理"混为一谈 | ⬜ |
-| springboot/router.md | `@Before` 配 ProceedingJoinPoint 且 return，无法编译 | ⬜ |
-| springboot/router.md | 切面用 DatabaseSharding、拦截器用 DS，注解名不统一 | ⬜ |
+| 基本/注解.md | 只定义 value，却使用 number() | ✅ |
+| 基本/注解.md | 缺 @Retention(RUNTIME)、@Target，运行时 getAnnotation 取不到 | ✅ |
+| 基本/反射.md | `Class.forName("com.example.MyClass")` 包名不匹配、`newInstance()` 已废弃 | ✅ |
+| spring/SpringIOC.md | `UserDao userService` / `userDao` 变量名不一致，编译错误 | ✅ |
+| spring/SpringIOC.md | 把"Bean 实例化"与"JDK/CGLIB 代理"混为一谈 | ✅ |
+| spring/SpringIOC.md | BeanPostProcessor 描述"实例化"应为"初始化" | ✅ |
+| spring/SpringIOC.md | `parseBeanDefinitions` 误写成 `processBeanDefinition`，`root` 未定义 | ✅ |
+| springboot/router.md | `@Before` 配 ProceedingJoinPoint 且 return，无法编译 | ✅ |
+| springboot/router.md | 切面用 DatabaseSharding、拦截器用 DS，注解名不统一 | ✅ |
 
 ## 第 3 批 · P1 自相矛盾 / 概念混淆
 

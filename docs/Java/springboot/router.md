@@ -94,8 +94,8 @@ public class DynamicDataSourceAspect {
     public void aopPoint() {
     }
 
-    @Before("aopPoint()")
-    public void doRouter(ProceedingJoinPoint joinPoint) {
+    @Around("aopPoint()")
+    public Object doRouter(ProceedingJoinPoint joinPoint) {
        DatabaseSharding databaseSharding = joinPoint.getTarget().getClass().getAnnotation(DatabaseSharding.class);
        String[] paramNames = ((MethodSignature) joinPoint.getSignature()).getParameterNames();
        Object[] paramValues = joinPoint.getArgs();
@@ -137,7 +137,7 @@ public class MybatisInterceptor implements Interceptor {
         String id = mappedStatement.getId();
         String className = id.substring(0, id.lastIndexOf("."));
         Class<?> clazz = Class.forName(className);
-        DS dbRouterStrategy = clazz.getAnnotation(DS.class);
+        DatabaseSharding dbRouterStrategy = clazz.getAnnotation(DatabaseSharding.class);
         if (null != dbRouterStrategy){
             return invocation.proceed();
         }

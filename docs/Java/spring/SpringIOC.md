@@ -44,7 +44,7 @@ public class UserService {
 //DAO 操作SQL
 ```
 
-如果不使用@Resource,我们可能得这么干。每次使用需要new 对象,如果这么干,那么我们gc回收的频率得多快,影响使用。
+如果不使用 @Resource，我们可能得手动 new。每次用都 new 一个新对象，对象数量暴涨，GC 频率和压力都会明显上升，影响性能。
 
 ```java
 public class UserController {
@@ -57,7 +57,7 @@ public class UserController {
 public class UserService {
 
     public void login() {
-        UserDao userService = new UserDao();
+        UserDao userDao = new UserDao();
         userDao.login();
     }
 }
@@ -130,7 +130,9 @@ public interface BeanDefinition extends AttributeAccessor, BeanMetadataElement {
 
 ## bean的创建
 
-bean的创建说简单点,其实就一种方法(反射),两种实现(jdk动态代理,cglib动态代理),前置条件要理解反射的两种实现
+Bean 的**实例化**方式主要有三种：无参构造（反射调用）、工厂方法（`factoryMethod`）、`Supplier`；此外还可以通过 `FactoryBean` 等扩展点返回对象。
+
+要区分开：JDK 动态代理和 CGLIB 动态代理**不是创建 Bean 的两种实现**，它们是 AOP 生成代理对象的两种方式，通常在 Bean 初始化之后（`postProcessAfterInitialization`）发生。下面两节讲的是代理。
 
 ### cglib动态代理
 cglib动态代理是一个基于ASM（一个开源Java字节码操作和分析框架）实现的代码生成库，用于在运行时生成代理类。相比于JDK动态代理，CGLIB动态代理更加强大和灵活，可以代理那些没有实现接口的类。
@@ -252,7 +254,7 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
         //省略
     }
 
-    protected void processBeanDefinition(Element ele, BeanDefinitionParserDelegate delegate) {
+    protected void parseBeanDefinitions(Element root, BeanDefinitionParserDelegate delegate) {
         if (delegate.isDefaultNamespace(root)) {
             NodeList nl = root.getChildNodes();
             for (int i = 0; i < nl.getLength(); i++) {
@@ -323,7 +325,7 @@ public interface BeanFactoryPostProcessor {
 
 ### BeanPostProcessor
 
-Spring的BeanPostProcessor是一个特殊的接口，它允许在Spring容器实例化Bean和将其配置为应用程序组件之前和之后对它们进行自定义处理。
+Spring的BeanPostProcessor是一个特殊的接口，它允许在 Bean **初始化**之前和之后对它进行自定义处理（注意是初始化，不是实例化）。
 
 BeanPostProcessor接口定义了两个用于处理Bean的方法：
 
