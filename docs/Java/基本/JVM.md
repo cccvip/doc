@@ -1,8 +1,12 @@
 # 前言
 
-JVM 的堆栈、内存模型这些基础，参考周志明《深入理解 Java 虚拟机》即可。这篇只抓两件事：**GC 怎么选、线上怎么排查**。
+JVM 的内存结构、对象死亡判定这些基础，周志明的《深入理解 Java 虚拟机》讲得很透，本文不重复。这篇只抓两件事：**GC 怎么选、线上怎么排查**。
 
-# 版本速查（JDK 8 vs JDK 17）
+顺带把面试里最容易含糊的几个点讲清楚：什么时候触发 Young GC / Full GC、CMS 和 G1 到底怎么跑、线上该选哪个收集器。
+
+> 本文由原来的 `JVM.md` 与 `GC.md` 合并而成，两篇内容原本有不少重叠，这里去重后统一在一处维护。
+
+# 总览：JDK 8 vs JDK 17
 
 | | JDK 8 | JDK 17 |
 |---|---|---|
@@ -36,10 +40,27 @@ JVM 的堆栈、内存模型这些基础，参考周志明《深入理解 Java �
 - 对象优先在 Eden 分配；
 - 新生代用复制算法，一次 Minor GC 把存活对象复制到 Survivor；
 - 晋升老年代的四条路径：
-  1. 年龄达到 `-XX:MaxTenuringThreshold`（默认 15）；
+  1. 年龄达到 `-XX:MaxTenuringThreshold`（默认 15）——长期存活；
   2. 大对象直接进老年代（`-XX:PretenureSizeThreshold`）；
   3. 动态年龄判定：Survivor 中同年龄对象总和超过一半（`-XX:TargetSurvivorRatio`）；
   4. 分配担保：Survivor 放不下，直接进老年代。
+
+# 什么时候触发 GC
+
+## Young GC
+
+新对象在 Eden 分配，**Eden 空间不足**时触发：把 Eden + From 的存活对象复制到 To，然后清空 Eden 和 From。
+
+## Full GC
+
+Full GC 的场景比 Young GC 多得多，常见这几条：
+
+- **Young GC 前的担保检查**：准备做 Young GC 时，若「老年代可用连续空间」< 「历次 Young GC 后升入老年代对象的平均大小」，说明这次很可能装不下，提前触发 Full GC；
+- **Young GC 之后老年代不足**：一批对象要晋升，但老年代放不下，立刻补一次 Full GC；
+- **老年代使用率过高**：老年代内存使用率达到一定比例（CMS 下是 `CMSInitiatingOccupancyFraction`）也会触发；
+- **空间分配担保失败（Promotion Failure）**：To 区放不下从 Eden/From 拷来的对象，或对象年龄到阈值要晋升，老年代又放不下；
+- **方法区 / 永久代不足**：永久代实现的方法区空间不够会触发 Full GC；
+- **显式命令**：`System.gc()` 一定会触发 Full GC；`jmap -dump` 只有在带 `:live`（如 `jmap -dump:live,format=b,file=...`）时才会先触发一次 Full GC。
 
 # 常见 GC 算法
 
@@ -52,8 +73,8 @@ JVM 的堆栈、内存模型这些基础，参考周志明《深入理解 Java �
 
 三色标记（可达性分析的具体实现）：
 
-- 白色：未访问；灰色：已访问但引用未扫完；黑色：已访问且引用扫完。
-- 漏标需要同时满足：黑色对象新增指向白色对象的引用，且灰色对象到该白色对象的引用被删除。
+- 白色：未访问；灰色：已访问但引用未扫完；黑色：已访问且引用扫完；
+- 漏标需要同时满足：黑色对象新增指向白色对象的引用，且灰色对象到该白色对象的引用被删除；
 - 解决：CMS 用**增量更新**（记下黑→白的新引用），G1 用 **SATB**（记下删除前的旧引用）。
 
 # 常见收集器
@@ -74,10 +95,10 @@ Serial 的多线程版，主要用来配合 CMS 收集新生代。
 
 作用于老年代，目标是低停顿。流程：
 
-1. 初始标记（STW）：标记 GC Roots 直接可达对象；
-2. 并发标记：和用户线程一起遍历对象图；
-3. 重新标记（STW）：修正并发标记期间的变化；
-4. 并发清除：清理不可达对象。
+1. **初始标记**（CMS initial mark）：单线程，需要 STW，只标记 GC Roots 直接可达的对象；
+2. **并发标记**（CMS concurrent mark）：无停顿，和用户线程一起从直达对象开始遍历整个对象图；
+3. **重新标记**（CMS remark）：多线程，需要 STW，修正并发标记期间产生变化的那部分对象；
+4. **并发清除**（CMS concurrent sweep）：无停顿，清理掉标记阶段判定为死亡的对象。
 
 问题：
 
@@ -95,7 +116,14 @@ Serial 的多线程版，主要用来配合 CMS 收集新生代。
 - 年轻代用复制，整体回收可看作复制 + 整理；
 - 维护 Region 的回收价值（垃圾占比）优先级队列，在 `-XX:MaxGCPauseMillis`（默认 200ms）约束下优先回收收益最高的 Region；
 - 用 Remembered Set 记录跨 Region 引用，避免全堆扫描；
-- 并发标记用 SATB，最终标记和筛选回收需要 STW。
+- 并发标记用 SATB。
+
+运行过程：
+
+1. **初始标记**（initial mark）：标记 GC Roots 直接关联的对象，STW；
+2. **并发标记**（concurrent marking）：和用户线程并发，从 GC Roots 递归扫描整个对象图；
+3. **最终标记**（Remark）：STW，标记并发标记期间新产生的垃圾；
+4. **筛选回收**（Live Data Counting And Evacuation）：制定回收计划，选多个 Region 组成回收集，把存活对象复制到空 Region，再清理旧 Region，需要 STW。
 
 关键参数：`-XX:MaxGCPauseMillis`、`-XX:G1HeapRegionSize`、`-XX:InitiatingHeapOccupancyPercent`（默认 45）。
 
@@ -110,81 +138,34 @@ JDK11 引入、JDK15 转正、JDK17 可用于生产。目标停顿 **10ms 以内
 - Shenandoah：Red Hat 贡献的低停顿收集器，部分 OpenJDK 发行版可用；
 - Epsilon：不做任何回收，只分配，用于性能测试。
 
-## 怎么选
+## 怎么选（含面试话术）
+
+选型速记：
 
 - 吞吐优先、后台任务：Parallel；
 - 低延迟、堆 4G~几十 G：G1（JDK8 也能用）；
 - 超大堆、极致低停顿：ZGC（JDK17+）；
 - 老项目 JDK8 且停顿敏感：G1 或 CMS（能升级就优先 G1）。
 
-# 八股速查
+面试被问"线上用的什么收集器"时，可以按方向回答：
 
-## 1. 如何判断对象可以被回收？
+> 高吞吐场景（业务复杂、并发不高，想榨干 CPU）→ **Parallel Scavenge + Parallel Old**。
 
-可达性分析：从 GC Roots 出发不可达的对象，且经过一次标记/清理仍不可达，才真正回收（还要看 `finalize`，但不建议依赖）。
+> 关注响应速度 → **Parallel New + CMS**，用 CMS 降低停顿。
 
-## 2. Minor GC、Major GC、Full GC 的区别？
+> 既要低停顿、又要解决 CMS 的浮动垃圾和内存碎片 → **G1**。
 
-- Minor / Young GC：只回收新生代，频繁、停顿短；
-- Major / Old GC：只回收老年代（CMS 的并发清除属于此类）；
-- Full GC：整堆 + 方法区，停顿最长。
-
-## 3. 什么时候触发 Full GC？
-
-- 老年代空间不足；
-- 元空间不足；
-- 分配担保失败；
-- `System.gc()`；
-- CMS 并发失败退化成 Serial Old。
-
-## 4. CMS 和 G1 的区别？
-
-| | CMS | G1 |
-|---|---|---|
-| 范围 | 老年代 | 整堆（Region） |
-| 算法 | 标记-清除 | 复制 + 整理 |
-| 碎片 | 有 | 基本没有 |
-| 停顿 | 不可预测 | 可设目标 |
-| 大堆表现 | 差 | 好 |
-
-## 5. G1 怎么做到可预测停顿？
-
-不是固定回收多少，而是**在 `MaxGCPauseMillis` 约束下，优先回收垃圾最多、成本最低的 Region**，用收益模型挑一批 Region 组成回收集。
-
-## 6. ZGC 为什么停顿这么短？
-
-染色指针把对象状态编码进指针，配合读屏障，在应用线程运行时并发完成标记和对象转移；STW 阶段只做根扫描，时间与堆大小基本无关。
-
-## 7. 什么是 STW、SafePoint、Safe Region？
-
-- STW：Stop The World，GC 时暂停所有应用线程；
-- SafePoint：线程可以安全暂停的位置（循环末尾、方法返回前、调用返回后、异常抛出点）；
-- Safe Region：引用关系不会变化的代码区域，线程在里面时 GC 不必等它走到 SafePoint。
-
-## 8. 内存泄漏和内存溢出有什么区别？
-
-- 内存泄漏：对象该回收却回收不掉，老年代持续上涨，最终 OOM；
-- 内存溢出：内存确实不够用，可能是一次性申请过大对象。
-
-## 9. 常见 OOM 有哪些？
-
-`Java heap space`、`GC overhead limit exceeded`、`Metaspace`、`Direct buffer memory`、`unable to create new native thread`、`Requested array size exceeds VM limit`。
-
-## 10. JDK8 和 JDK17 默认 GC 分别是什么？
-
-JDK8 默认 Parallel Scavenge + Parallel Old；JDK17 默认 G1。
-
-# 分析思路（重点）
+# 线上排查（重点）
 
 ## 排查总流程
 
 1. **确认现象**：接口超时？CPU 高？内存涨？OOM？
-2. **定位进程**：`jps -l` / `ps -ef | grep java`。
-3. **看 GC**：`jstat -gcutil` + GC 日志，判断是 YGC 频繁、FGC 频繁，还是单次 STW 过长。
-4. **看堆**：`jmap -histo:live` 看对象分布，必要时 dump。
-5. **看线程**：`jstack` + `top -Hp`，判断是 GC 线程还是业务线程占 CPU。
-6. **分析 dump**：MAT 的 Leak Suspects、Dominator Tree、Path to GC Roots。
-7. **定位代码**：结合业务日志和改动时间，找到分配点 / 泄漏点。
+2. **定位进程**：`jps -l` / `ps -ef | grep java`；
+3. **看 GC**：`jstat -gcutil` + GC 日志，判断是 YGC 频繁、FGC 频繁，还是单次 STW 过长；
+4. **看堆**：`jmap -histo:live` 看对象分布，必要时 dump；
+5. **看线程**：`jstack` + `top -Hp`，判断是 GC 线程还是业务线程占 CPU；
+6. **分析 dump**：MAT 的 Leak Suspects、Dominator Tree、Path to GC Roots；
+7. **定位代码**：结合业务日志和改动时间，找到分配点 / 泄漏点；
 8. **修复并验证**：改代码或调参，复测 GC 指标。
 
 ## 命令速查
@@ -274,6 +255,21 @@ GC 日志：
 | `-XX:+UseZGC` | 使用 ZGC（JDK17+） |
 | `-XX:+HeapDumpOnOutOfMemoryError` | OOM 时自动 dump |
 | `-Xlog:gc*` | JDK9+ 统一 GC 日志 |
+
+# 小结
+
+我一向不太喜欢写总结，不过考虑到很多读者是冲着面试来的，这里把高频问题列成清单，赶时间的可以直接看这一节。
+
+1. **如何判断对象可以被回收？** 可达性分析：从 GC Roots 出发不可达的对象，且经过一次标记/清理仍不可达，才真正回收（还要看 `finalize`，但不建议依赖）。
+2. **Minor GC、Major GC、Full GC 的区别？** Minor / Young GC 只回收新生代，频繁、停顿短；Major / Old GC 只回收老年代（CMS 的并发清除属于此类）；Full GC 整堆 + 方法区，停顿最长。
+3. **什么时候触发 Full GC？** 老年代空间不足、元空间不足、分配担保失败、`System.gc()`、CMS 并发失败退化成 Serial Old。
+4. **CMS 和 G1 的区别？** CMS 只作用于老年代、标记-清除、有碎片、停顿不可预测；G1 面向整堆 Region、复制 + 整理、基本无碎片、停顿可设目标、大堆表现好。
+5. **G1 怎么做到可预测停顿？** 不是固定回收多少，而是**在 `MaxGCPauseMillis` 约束下，优先回收垃圾最多、成本最低的 Region**，用收益模型挑一批 Region 组成回收集。
+6. **ZGC 为什么停顿这么短？** 染色指针把对象状态编码进指针，配合读屏障，在应用线程运行时并发完成标记和对象转移；STW 阶段只做根扫描，时间与堆大小基本无关。
+7. **什么是 STW、SafePoint、Safe Region？** STW 是 GC 时暂停所有应用线程；SafePoint 是线程可以安全暂停的位置（循环末尾、方法返回前、调用返回后、异常抛出点）；Safe Region 是引用关系不会变化的代码区域，线程在里面时 GC 不必等它走到 SafePoint。
+8. **内存泄漏和内存溢出有什么区别？** 泄漏是对象该回收却回收不掉，老年代持续上涨，最终 OOM；溢出是内存确实不够用，可能是一次性申请过大对象。
+9. **常见 OOM 有哪些？** `Java heap space`、`GC overhead limit exceeded`、`Metaspace`、`Direct buffer memory`、`unable to create new native thread`、`Requested array size exceeds VM limit`。
+10. **JDK8 和 JDK17 默认 GC 分别是什么？** JDK8 默认 Parallel Scavenge + Parallel Old；JDK17 默认 G1。
 
 # 参考
 

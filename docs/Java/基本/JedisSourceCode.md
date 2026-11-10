@@ -1,4 +1,8 @@
-# what
+`JedisPool` 看着简单，但"底层是什么""为什么必须 close""连接耗尽怎么回事"这些问题，翻一下配置文档是答不全的。这篇从 commons-pool2 的 `borrowObject` / `returnObject` 走一遍，把借还连接的机制讲清楚。
+
+> 本文对着 apache-commons-pool2 的 `GenericObjectPool` 和 Jedis 的 `JedisPool` / `JedisFactory` 源码看。
+
+# 总览
 
 Jedis 的连接池不是自己实现的，而是基于 **apache-commons-pool2** 的 `GenericObjectPool`。`JedisPool` 只负责把「创建、销毁、校验 Jedis」的细节交给 `JedisFactory`。
 
@@ -15,7 +19,7 @@ Jedis 的连接池不是自己实现的，而是基于 **apache-commons-pool2** 
 ```java
 public abstract class Pool<T> implements Closeable {
     public T getResource() {
-        return internalPool.borrowObject();
+        return internalPool.borrowObject();   // 借连接，交给底层的 GenericObjectPool
     }
 }
 ```
@@ -40,12 +44,12 @@ public void close() {
         JedisPoolAbstract pool = this.dataSource;
         this.dataSource = null;
         if (isBroken()) {
-            pool.returnBrokenResource(this);
+            pool.returnBrokenResource(this);   // 标记为坏连接 → 直接销毁
         } else {
-            pool.returnResource(this);
+            pool.returnResource(this);         // 正常归还到空闲队列
         }
     } else {
-        super.close();
+        super.close();                          // 不是从池里借的，才真正关闭
     }
 }
 ```
@@ -56,6 +60,7 @@ public void close() {
 - 空闲数超过 `maxIdle` 时，多出来的连接会被销毁。
 
 ```java
+// 归还前校验失败：销毁这个连接，并补一个空闲连接维持 minIdle
 if (getTestOnReturn() && !factory.validateObject(p)) {
     destroy(p, DestroyMode.NORMAL);
     ensureIdle(1, false);
@@ -102,61 +107,6 @@ if (getTestOnReturn() && !factory.validateObject(p)) {
 
 `blockWhenExhausted`、`lifo`、`fairness`、`timeBetweenEvictionRunsMillis`、`minEvictableIdleTimeMillis`、`numTestsPerEvictionRun`。
 
-# 八股速查
-
-## 1. JedisPool 底层是什么？
-
-commons-pool2 的 `GenericObjectPool<Jedis>`，配合 `JedisFactory`（`BasePooledObjectFactory<Jedis>`）完成创建、销毁、校验。
-
-## 2. maxTotal / maxIdle / minIdle 的区别？
-
-- `maxTotal`：池里最多有多少个连接（活跃 + 空闲）；
-- `maxIdle`：最多保留多少空闲连接，超出的归还时销毁；
-- `minIdle`：最少保留多少空闲连接，不够会补。
-
-一般满足 `maxTotal >= maxIdle >= minIdle`。
-
-## 3. testOnBorrow / testOnReturn / testWhileIdle 的区别？
-
-- `testOnBorrow`：借出前 PING；
-- `testOnReturn`：归还前 PING；
-- `testWhileIdle`：后台线程定期扫描空闲连接并 PING。
-
-前两个是同步开销，第三个是异步检测。
-
-## 4. 连接耗尽会怎样？
-
-`getResource()` 在 `maxWaitMillis` 内拿不到连接，抛 `JedisExhaustedPoolException`（底层是 `NoSuchElementException`）。
-
-## 5. 为什么必须 close？
-
-`close()` 把连接还给池。不 close 就等于连接一直被占用，最终池耗尽，所有请求阻塞或抛异常。
-
-## 6. Jedis 实例线程安全吗？
-
-**不安全**。Jedis 内部是一条 TCP 连接 + 请求/响应流，多线程共享会串包。正确做法是每次从 `JedisPool` 借一个，用完还回去。
-
-## 7. JedisPool 和 JedisCluster 的区别？
-
-- `JedisPool`：单节点 / 主从；
-- `JedisCluster`：集群模式，**每个节点一个池**，总连接数 = 节点数 × 单池 `maxTotal`。
-
-## 8. 连接数怎么估？
-
-`连接数 ≈ QPS × 平均 RTT（秒）`，再留一点冗余。但要记住 Redis 单线程执行命令，池不是越大越好。
-
-## 9. maxWaitMillis = -1 有什么风险？
-
-拿不到连接时**永久阻塞**，线程会一直挂住，故障时容易把业务线程池拖死。
-
-## 10. 为什么 maxIdle 建议等于 maxTotal？
-
-`maxIdle < maxTotal` 时，流量高峰后多出来的空闲连接会被销毁，下次高峰又要重新建连，反复创建/销毁不划算。
-
-## 11. 阻塞命令有什么坑？
-
-`BLPOP` / `BRPOP` 会一直占着连接，不能和普通命令共用一个小池，建议单独池或单独线程。
-
 # 实战场景
 
 ## Spring Boot 配置
@@ -192,7 +142,7 @@ try (Jedis jedis = jedisPool.getResource()) {
 
 现象：
 
-```
+```text
 JedisExhaustedPoolException: Could not get a resource from the pool
 ```
 
@@ -218,6 +168,20 @@ JedisExhaustedPoolException: Could not get a resource from the pool
 6. **共享 Jedis 实例**：线程不安全，协议会串；
 7. **阻塞命令占连接**：`BLPOP` 不返回，连接一直不还；
 8. **忽略 Redis `timeout`**：服务端断开空闲连接，客户端拿到死连接，需要 `testWhileIdle`。
+
+# 小结
+
+1. **JedisPool 底层是什么？** commons-pool2 的 `GenericObjectPool<Jedis>`，配合 `JedisFactory`（`BasePooledObjectFactory<Jedis>`）完成创建、销毁、校验。
+2. **maxTotal / maxIdle / minIdle 的区别？** `maxTotal` 是池里最多多少个连接（活跃 + 空闲）；`maxIdle` 是最多保留多少空闲连接，超出的归还时销毁；`minIdle` 是最少保留多少空闲连接，不够会补。一般满足 `maxTotal >= maxIdle >= minIdle`。
+3. **testOnBorrow / testOnReturn / testWhileIdle 的区别？** 前两个分别在校验借出前 / 归还前，是同步开销；第三个由后台线程定期扫描空闲连接，是异步检测。
+4. **连接耗尽会怎样？** `getResource()` 在 `maxWaitMillis` 内拿不到连接，抛 `JedisExhaustedPoolException`（底层是 `NoSuchElementException`）。
+5. **为什么必须 close？** `close()` 把连接还给池。不 close 就等于连接一直被占用，最终池耗尽。
+6. **Jedis 实例线程安全吗？** **不安全**。Jedis 内部是一条 TCP 连接 + 请求/响应流，多线程共享会串包。正确做法是每次从 `JedisPool` 借一个，用完还回去。
+7. **JedisPool 和 JedisCluster 的区别？** 前者是单节点 / 主从；后者是集群模式，**每个节点一个池**，总连接数 = 节点数 × 单池 `maxTotal`。
+8. **连接数怎么估？** `连接数 ≈ QPS × 平均 RTT（秒）`，再留冗余；但要记住 Redis 单线程执行命令，池不是越大越好。
+9. **maxWaitMillis = -1 有什么风险？** 拿不到连接时**永久阻塞**，线程会一直挂住，故障时容易把业务线程池拖死。
+10. **为什么 maxIdle 建议等于 maxTotal？** `maxIdle < maxTotal` 时，流量高峰后多出来的空闲连接会被销毁，下次高峰又要重新建连，反复创建/销毁不划算。
+11. **阻塞命令有什么坑？** `BLPOP` / `BRPOP` 会一直占着连接，不能和普通命令共用一个小池，建议单独池或单独线程。
 
 # 参考
 

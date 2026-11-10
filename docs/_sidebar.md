@@ -9,7 +9,6 @@
   - [threadLocal](Java/基本/threadLocal.md)
   - [线程池](Java/基本/线程池.md)
   - [JVM](Java/基本/JVM.md)
-  - [GC](Java/基本/GC.md)
   - [内存调优](Java/基本/内存调优.md)
   - [内存调优第二篇](Java/基本/内存调优第二篇.md)
   - [jar打包](Java/基本/package.md)
