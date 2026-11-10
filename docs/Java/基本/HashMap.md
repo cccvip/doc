@@ -1,202 +1,134 @@
 # what
-Java中的HashMap是一种用于存储键值对的数据结构。它是基于哈希表实现的，可以快速地插入、删除和查找元素。HashMap中的每个元素由一个键和一个值组成，键是唯一的，值可以重复。它平均提供 O(1) 的插入和查找操作（哈希冲突严重时最坏会退化到 O(n) 或 O(log n)），并且不保证元素的顺序。
+
+HashMap 是基于哈希表实现的键值对容器：`key` 唯一、`value` 可重复，平均 O(1) 查找/插入，不保证顺序，非线程安全。
+
+一句话记住 JDK8 的结构：**数组 + 链表 + 红黑树**。
 
 ![.hashMap.png](hashMap.png)
 
-# 原理实现
-- 散列表实现
+# 一篇背完：高频八股
 
-假如我们不使用HashMap,自己实现一个散列的内容,可能的代码类似如下
+## 1. 为什么数组长度必须是 2 的幂？
+
+下标靠 `index = (n - 1) & hash` 计算。n 是 2 的幂时，`n - 1` 的低位全是 1，位与等价于 `hash % n`，但更快。
+
+同时扩容时可以用 `hash & oldCap` 判断元素留在原位还是移到 `原下标 + oldCap`，不必重新计算 hash。
+
+## 2. 扰动函数是干什么的？
 
 ```java
-class HasHMap {
-    public static void main(String[] args) {
-      List<String> data = new ArrayList<>();
-      data.add("abc");
-      data.add("def");
-      data.add("xiao");
-      data.add("sir");
-      data.add("miss");
-      data.add("haha");
-      data.add("defgi");
-      data.add("3bc");
-      int size = data.size();
-      String[] tab = new String[size];
-      for (int i = 0; i < size; i++) {
-        String d = data.get(i);
-        System.out.println(NumberUtil.getBinaryStr(d.hashCode()));
-        int idx = d.hashCode() & (size - 1);
-        System.out.println("key:" + idx + "=valus:" + d);
-        if (null == tab[idx]) {
-          tab[idx] = d;
-        } else {
-          tab[idx] = tab[idx] + "->" + d;
-        }
-      }
-      System.out.println(JSON.toJSONString(tab));
-    }
+static final int hash(Object key) {
+    int h;
+    return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
 }
 ```
-====>>输出结果：
+
+`hashCode` 的高 16 位在取模时会被丢掉，`h ^ (h >>> 16)` 把高位混进低位，让高位也参与下标计算，减少冲突。
+
+## 3. put 的流程（背这一句）
+
+计算 hash 和下标 → 桶为空直接放 → key 相同（`==` 或 `equals`）则覆盖 → 树节点走树插入 → 否则尾插链表 → 链表 ≥ 8 且容量 ≥ 64 时树化 → `++size > threshold` 时扩容。
+
+## 4. 扩容怎么做的？
+
+- 容量翻倍，阈值也翻倍（`threshold = capacity × 0.75`）；
+- JDK8：用 `(e.hash & oldCap) == 0` 把原链表拆成**低位链**和**高位链**：低位留在原下标，高位移到 `原下标 + oldCap`，不用重新算 hash；
+- JDK7：重新计算 hash（rehash）+ 头插。
+
+## 5. 为什么负载因子是 0.75？
+
+时间与空间的折中：太高冲突多、链表长；太低浪费空间。0.75 下，一个桶里放 8 个节点的概率约 `6e-8`（泊松分布），所以树化阈值取 8。
+
+## 6. 树化和退化的阈值
+
+| 参数 | 值 | 含义 |
+|---|---|---|
+| `TREEIFY_THRESHOLD` | 8 | 链表长度达到 8 尝试树化 |
+| `MIN_TREEIFY_CAPACITY` | 64 | 容量不足 64 时先扩容，不树化 |
+| `UNTREEIFY_THRESHOLD` | 6 | 节点减少到 6 退化回链表 |
+
+6 和 8 之间留了缓冲，避免在边界反复转换。
+
+## 7. HashMap 为什么线程不安全？
+
+- JDK7：扩容用**头插**，并发 transfer 可能形成环形链表，`get` 时死循环，还会丢数据；
+- JDK8：改成**尾插**，不会成环，但并发 put 仍会互相覆盖、丢数据，`size` 也不准。
+
+## 8. 想要线程安全怎么办？
+
+Hashtable（方法级 synchronized，性能差）、`Collections.synchronizedMap`（mutex 加锁）、**ConcurrentHashMap（首选）**：JDK8 用 CAS + synchronized 锁单个桶。
+
+## 9. 什么是 fail-fast？
+
+迭代器内部记录 `modCount`，迭代过程中若结构被修改（put/remove），会抛 `ConcurrentModificationException`。用 `iterator.remove()` 是安全的。
+
+## 10. 允许 null 吗？
+
+HashMap 允许 **1 个 null key**（hash 记 0，放在下标 0）和**多个 null value**；Hashtable 两者都不允许。
+
+## 11. 对 key 有什么要求？
+
+必须正确重写 `hashCode()` 和 `equals()`（契约：equals 相等，hashCode 必须相等），并且尽量用不可变对象——key 的 hashCode 变了就再也定位不到了。
+
+## 12. HashMap / Hashtable / synchronizedMap
+
+| | HashMap | Hashtable | synchronizedMap |
+|---|---|---|---|
+| 线程安全 | 否 | 是（方法 synchronized） | 是（mutex） |
+| null key/value | 允许 | 不允许 | 取决于被包装的 Map |
+| 迭代器 | fail-fast | 非 fail-fast | fail-fast |
+| 性能 | 高 | 低 | 中 |
+
+## 13. 为什么 Hashtable 不允许 null？
+
+源码里直接判空并抛 `NullPointerException`；常见解释是并发场景下无法区分「key 不存在」和「value 为 null」。
+
+## 14. JDK7 和 JDK8 的区别
+
+| | JDK7 | JDK8 |
+|---|---|---|
+| 结构 | 数组 + 链表 | 数组 + 链表 + 红黑树 |
+| 插入 | 头插 | 尾插 |
+| hash | 4 次移位异或 | 一次 `h ^ (h >>> 16)` |
+| 扩容 | rehash | 高低位拆分，不重算 |
+| 并发 | 可能成环死循环 | 不成环，但会覆盖/丢数据 |
+
+## 15. 冲突有哪些解决方式？
+
+- 链地址法：冲突的桶挂链表（HashMap 用的就是它）；
+- 开放地址法：从冲突位置往后找空位（线性探测、二次探测等）；
+- 再哈希法：换一个哈希函数再算；
+- 公共溢出区：冲突的放另一块区域。
+
+# 原理实现（了解即可）
+
+## 散列表与冲突
+
+不用 HashMap 时，自己用数组做散列大致是这样：
+
 ```java
-10111100001100010
-key:2=valus:abc
-11000010000000101
-key:5=valus:def
-1110000010001011011111
-key:7=valus:xiao
-11011110011011100
-key:4=valus:sir
-1100110010010011111100
-key:4=valus:miss
-1100001011111110110010
-key:2=valus:haha
-101101100001010001110100111
-key:7=valus:defgi
-1100101110110100
-key:4=valus:3bc
-[null,null,"abc->haha",null,"sir->miss->3bc","def",null,"xiao->defgi"]
+String[] tab = new String[16];          // 容量取 2 的幂
+for (String s : new String[]{"abc", "def", "xiao"}) {
+    int idx = s.hashCode() & (tab.length - 1);
+    tab[idx] = (tab[idx] == null) ? s : tab[idx] + "->" + s;
+}
 ```
 
-通过输出的结果中可以思考以下几个问题？
+不同 key 可能落到同一下标，冲突的元素用链表串起来，这就是链地址法。注意数组长度必须取 2 的幂，否则 `& (length - 1)` 不能当取模用。
 
-1. 数组越小碰撞的越大，数组越大碰撞的越小，时间与空间如何取舍。
-2. 目前存放7个元素，已经有两个位置都存放了2个字符串，那么链表越来越长怎么优化。
-3. 随着元素的不断添加，数组长度不足扩容时，怎么把原有的元素，拆分到新的位置上去
-- 增加扰动函数
-java8中hashMap的扰动函数hash计算如下
+## 扩容为什么不用重算 hash
 
-```shell
-static final int hash(Object key) {
-        int h;
-        return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
-    }
-abc的hashcode值为
-000000000000000010111100001100010
-右移16位
-000000000000000000000000000000001
-自身的高16位与自身的低16位进行异或运算（相等为0不等为1）
-000000000000000010111100001100011
-```
+扩容到两倍后，多出来的那一位正好是 `oldCap`。所以只需要看 `hash & oldCap`：
 
-使用扰动函数的情况下,数据分布更均匀
+- 为 0：下标不变；
+- 不为 0：新下标 = 旧下标 + oldCap。
 
-- 初始化容量
+一条链表因此被拆成「低位链」和「高位链」，这就是 JDK8 的扩容优化。
 
-初始化数组的长度必须是 2 的整数次幂（这样 `capacity - 1` 才能当作低位掩码来用）
+## 树化
 
-- 负载因子
+链表长度 ≥ 8 且 `table.length ≥ 64` 时转红黑树；节点数 ≤ 6 时退化回链表。红黑树通过左旋、右旋、染色维持平衡，把最坏查找从 O(n) 降到 O(log n)。
 
-一个合理的大小下进行扩容，默认值0.75就是说当阈值容量占了3/4时赶紧扩容，减少Hash碰撞。
+# 参考
 
-- 扩容
-
-扩容就考虑到是否要重新进行hash计算数据存放的索引, 针对java8而言不需要重新计算下标。那么这个是怎么做到的呢？
-
-验证：
-```shell
-List<String> list = new ArrayList<>();
-        list.add("jlkk");
-        list.add("lopi");
-        list.add("jmdw");
-        list.add("e4we");
-        list.add("io98");
-        list.add("nmhg");
-        list.add("vfg6");
-        list.add("gfrt");
-        list.add("alpo");
-        list.add("vfbh");
-        list.add("bnhj");
-        list.add("zuio");
-        list.add("iu8e");
-        list.add("yhjk");
-        list.add("plop");
-        list.add("dd0p");
-        int size = list.size();
-
-        for (int i = 0; i < size; i++) {
-            String d = list.get(i);
-            int hash = d.hashCode() ^ (d.hashCode() >>> 16);
-            System.out.println("字符串：" + d + " \tIdx(16)：" + Integer.toBinaryString((16 - 1) & hash) +  "\tIdx(32)："+Integer.toBinaryString((32 - 1) & hash));
-        }
-```
-打印结果
-```shell
-字符串：jlkk 	Idx(16)：11	Idx(32)：10011
-字符串：lopi 	Idx(16)：1110	Idx(32)：1110
-字符串：jmdw 	Idx(16)：111	Idx(32)：111
-字符串：e4we 	Idx(16)：11	Idx(32)：10011
-字符串：io98 	Idx(16)：100	Idx(32)：10100
-字符串：nmhg 	Idx(16)：1101	Idx(32)：1101
-字符串：vfg6 	Idx(16)：1000	Idx(32)：1000
-字符串：gfrt 	Idx(16)：1	Idx(32)：10001
-字符串：alpo 	Idx(16)：111	Idx(32)：111
-字符串：vfbh 	Idx(16)：1	Idx(32)：1
-字符串：bnhj 	Idx(16)：0	Idx(32)：0
-字符串：zuio 	Idx(16)：1000	Idx(32)：11000
-字符串：iu8e 	Idx(16)：1000	Idx(32)：1000
-字符串：yhjk 	Idx(16)：1000	Idx(32)：1000
-字符串：plop 	Idx(16)：1001	Idx(32)：1001
-字符串：dd0p 	Idx(16)：1110	Idx(32)：1110
-```
-
-从输出可以得出结论：扩容到 32 时，看的是 hash 的第 5 位（也就是 oldCap=16 对应的那一位）。
-
-- 如果 `hash & oldCap == 0`：下标不变；
-- 如果 `hash & oldCap != 0`：新下标 = 旧下标 + oldCap（本例就是 +16）。
-
-所以 JDK 8 扩容时不需要重新计算 hash，只要判断这一位，就能把原链表拆成"低位链"和"高位链"。
-
-为什么是 3/4 就扩容：默认 `loadFactor = 0.75`，阈值 `threshold = table.length - (table.length >> 2)`（等价于 capacity × 0.75，容量 16 时就是 12）；元素数超过阈值就扩容。
-
-- 链表树化
-
-table.length≥64 && 链表长度≥8的时候
-
-- 红黑树
-
-需要经历左旋 右旋转 染色
-
-# 八股文面试问题
-## 为什么 HashMap 的数组长度要取 2 的整数幂?
-因为这样（数组长度 - 1）正好相当于一个 “低位掩码”。与 操作的结果就是散列值的高位全部归零，只保留低位值，用来做数组下标访问。
-
-扰动函数右移 16 位，正好是 32bit 的一半，自己的高半区和低半区做异或，就是为了混合原始哈希码的高位和低位，以此来加大低位的随机性。而且混合后的低位掺杂了高位的部分特征，这样高位的信息也被变相保留下来。
-
-## 解决hash冲突有哪些方法？
-- 链地址法
-  冲突的位置增加一个链表,用链表存放冲突的元素
-- 开放地址法
-  从冲突的位置再接着往下找,给冲突元素找个空位
-
-
-### SynchronizedMap、HashMap、Hashtable 之间的区别？
-
-- `Collections.synchronizedMap` 是线程安全的：它内部持有一个 mutex 对象，通过对 mutex 加 `synchronized` 来保证 put/get 等操作的线程安全。
-- Hashtable vs HashMap
-  - HashMap 允许**一个 null key 和多个 null value**；Hashtable **两者都不允许**，传入 null 会直接抛 NullPointerException。
-  - Hashtable 是线程安全（方法上加了 synchronized），HashMap 不是。
-  - 迭代器行为不同：HashMap 的 Iterator 是 fail-fast（modCount 变化会抛 ConcurrentModificationException）；Hashtable 的 Enumerator **不是 fail-fast**，并发修改不会抛 CME，但也不保证读到最新数据，不能简单等同于 fail-safe。  
-  
-### 为什么hashtable不允许为空？
-- 源码设计上如果传入为null 会报空指针异常。
-
-### 问题
-- jdk1.7会出现什么问题？
-扩容时候的插入过程,注意一点使用的是头插入方式
-![image](_assets/jdk1.7.jpg)
-
-> 则可能会出现线程一已经修改完成7->3 线程二又重复执行3—>7造成环形链表。
-
-执行get(key),key本身又不存在就会出现死循环。
-数据丢失
-
-- jdk1.8会出现什么问题？
-
-并发put的时候,存在数据覆盖的情况。
-
-### 1.8相比1.7优化策略在哪儿？
-使用红黑树+尾插法优化掉存储结构
-
-
-
+- JDK8 `HashMap` 源码
