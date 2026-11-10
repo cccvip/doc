@@ -59,10 +59,11 @@
 
 | 文件 | 问题 | 状态 |
 |---|---|---|
-| netty/firstPage.md | Netty 默认触发模式写成水平触发（应为 ET） | ⬜ |
-| netty/future.md | "FutureTask 锁竞争"整节论证错误（实为无锁 CAS） | ⬜ |
-| netty/实战.md | 误粘贴 Go ServeMux 路由文档 | ⬜ |
-| netty/readme.md | nginx 配置注释用 `//`（应为 `#`） | ⬜ |
+| netty/firstPage.md | Netty 默认触发模式写成水平触发（应为 ET） | ✅ |
+| netty/future.md | "FutureTask 锁竞争"整节论证错误（实为无锁 CAS） | ✅ |
+| netty/实战.md | 误粘贴 Go ServeMux 路由文档 | ✅ |
+| netty/readme.md | nginx 配置注释用 `//`（应为 `#`） | ✅ |
+| netty/readme.md | nginx 配置行首混入全角空格，导致配置无效 | ✅ |
 
 ## 第 5 批 · P2 精度 / 表述
 
