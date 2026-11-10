@@ -11,7 +11,7 @@ MyBatis 动态代理的作用主要是用于创建接口的实现对象，在运
 - 简化配置：MyBatis 通过动态代理机制，可以自动生成接口的实现类，这样用户只需要定义接口和映射文件，无需编写具体的实现类。
 - 提高效率：由于代理对象的生成是在运行时完成的，因此可以节省编译时间和资源。
 - 便于维护：当接口方法需要变更时，只需修改少量的代理处理逻辑，而不需要改动每个实现类。
-- 支持多种代理方式：MyBatis 支持 JDK 动态代理和 CGLib 动态代理两种方式，用户可以根据需要选择合适的代理方式。
+- 只用 JDK 动态代理：MyBatis 的 Mapper 接口代理是通过 `Proxy.newProxyInstance` + `MapperProxy` 实现的，只支持 JDK 动态代理，**不支持 CGLIB**。CGLIB/Javassist 在 MyBatis 里用于其他场景（如延迟加载），不是 Mapper 代理。
 
 ## Mybatis的动态代理简易类图实现
 ![img_1.png](proxy.png)

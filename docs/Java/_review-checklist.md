@@ -42,16 +42,18 @@
 
 | 文件 | 问题 | 状态 |
 |---|---|---|
-| spring/Spring循环依赖.md | 一级缓存示例已跑通，却断言"无法解决" | ⬜ |
-| spring/Spring循环依赖.md | "两级缓存破坏生命周期"语义不通 | ⬜ |
-| spring/Spring循环依赖.md | 三级缓存"移除二级、加入一级"描述混乱 | ⬜ |
-| spring/基本概念.md | BeanPostProcessor 注释/正文"实例化"应为"初始化" | ⬜ |
-| spring/基本概念.md | BeanFactoryPostProcessor 注释"初始化后"错误 | ⬜ |
-| spring/总结.md | AOP 代理生成时机错误（BeforeInstantiation） | ⬜ |
-| spring/SpringAop代理.md | postProcessBeforeInstantiation 职责被误写成解析 @Aspect | ⬜ |
-| springboot/starter.md | 流程顺序写成 初始化→属性填充→实例化 | ⬜ |
-| springMvc/Mvc.md | HandlerMapping "实现类" 写成抽象类/接口 | ⬜ |
-| mybatis/Proxy.md | MyBatis Mapper 支持 CGLib 代理（错误） | ⬜ |
+| spring/Spring循环依赖.md | 一级缓存示例已跑通，却断言"无法解决" | ✅ |
+| spring/Spring循环依赖.md | "两级缓存破坏生命周期"语义不通 | ✅ |
+| spring/Spring循环依赖.md | 三级缓存"移除二级、加入一级"描述混乱 | ✅ |
+| spring/基本概念.md | BeanPostProcessor 注释/正文"实例化"应为"初始化" | ✅ |
+| spring/基本概念.md | BeanFactoryPostProcessor 注释"初始化后"错误 | ✅ |
+| spring/总结.md | AOP 代理生成时机错误（BeforeInstantiation） | ✅ |
+| spring/SpringAop代理.md | postProcessBeforeInstantiation 职责被误写成解析 @Aspect | ✅ |
+| springboot/starter.md | 流程顺序写成 初始化→属性填充→实例化 | ✅ |
+| springMvc/Mvc.md | HandlerMapping "实现类" 写成抽象类/接口 | ✅ |
+| springMvc/Mvc.md | "HandlerAdapter 不准确，应该是 Executor" 表述错误 | ✅ |
+| springMvc/Mvc.md | 查找 Handler 示例给的是 nameLookup，应为 mappingLookup | ✅ |
+| mybatis/Proxy.md | MyBatis Mapper 支持 CGLib 代理（错误） | ✅ |
 
 ## 第 4 批 · P1 Netty
 

@@ -69,19 +69,30 @@ com.xiao.A@4f3f5b24
 com.xiao.B@15aeb7ab
 ```
 
-## 为什么spring不使用一级缓存解决问题呢
+## 为什么 spring 还要多级缓存？
 ![img.png](_assets/beanRecyle.png)
 
-因为对象还有属性未被赋值,未被初始化。在spring的Bean生命周期中,bean存在实例化和初始化后的两种状态存在,也可称之为半成品化和成品化。如果只有一级缓存(一个Map),是无法解决bean生命周期两个状态bean共存的这个问题。
+先澄清一点：上面的一级缓存 demo 对**普通字段注入**是能跑通的——它先把对象放进 Map 再填充属性，确实能解开 A 和 B 的循环。所以"一级缓存解决不了循环依赖"这个说法并不准确。
 
-## 二级缓存能解决问题吗？
-假想一下两个缓存 一个存成品,一个存半成品是否能解决问题? 如果不能 可能会出什么问题？
-如果仅仅是为了解决问题,当然是可以。但是spring没有采用这种方法地原因是Aop特性,Aop的实现机制是在Bean最后一步,对Bean生成Aop-Target类。
-如果只使用两级缓存,就会导致生成的Bean在实例化后就会创建,破坏了Bean生命周期
+Spring 不用纯一级缓存，真正的原因是 **AOP 代理**：
 
-### Aop代理对象提前放入了三级缓存,没有经过初始化和属性填充,属性是什么时候被填充的呢？
+- 循环依赖时，Spring 需要在对象还没初始化完成时就把引用暴露给对方；
+- 但代理对象本应在**初始化之后**由 BeanPostProcessor 生成；
+- 只有一个 Map 就无法区分"原始对象"和"最终代理对象"，也没法在正确时机把代理换进去。
 
-Aop代理的是原始的bean,原始的bean在属性赋值的时候,保证了周期的完善。执行addSingletonFactory,将代理类移除二级缓存,加入一级缓存中
+于是才有了三级缓存的分工。
+
+## 二级缓存能解决吗？
+
+两个缓存（成品 + 半成品）对普通循环依赖确实够用。Spring 没有只用两级，还是因为 AOP：如果二级缓存里放的是原始对象，那么提前暴露出去的就是原始对象；等后续代理对象生成后，其它 Bean 里已经注入的引用可能仍指向原始对象，导致增强失效。
+
+所以需要第三级缓存：放的是 `ObjectFactory`（Lambda），等到真正被依赖时才调用它，决定"要不要提前生成代理"，从而既解决循环依赖，又保证 AOP 的时机。
+
+### 三级缓存里放的到底是什么？
+
+三级缓存 `singletonFactories` 里放的不是代理对象，而是一个 `ObjectFactory`（Lambda：`() -> getEarlyBeanReference(beanName, mbd, bean)`）。它的作用是延迟决策：只有真的出现循环依赖、被别人来取时，才执行这个 Lambda；执行时会走 `getEarlyBeanReference`——如果该 Bean 需要 AOP，就在这里提前生成代理并放入二级缓存 `earlySingletonObjects`，否则直接返回原始对象。
+
+属性填充仍然发生在原始对象上；等 Bean 完整初始化后，再把它（或代理）放入一级缓存 `singletonObjects`。`addSingletonFactory` 只是把工厂注册进三级缓存，不是"把代理类从二级移到一级"。
 
 ```shell script
 		boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences &&

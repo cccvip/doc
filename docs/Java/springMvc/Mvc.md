@@ -52,7 +52,7 @@ protected void doDispatch(HttpServletRequest request, HttpServletResponse respon
 ```
 
 ## 第一点 GetHandler()
-GetHandler实现依赖于HandlerMapping,HandlerMapping有两个最主要的实现类,AbstractHandlerMapping和MatchableHandlerMapping。
+GetHandler 依赖 HandlerMapping。注意 `AbstractHandlerMapping` 是抽象基类、`MatchableHandlerMapping` 是接口，两者都不是可直接使用的"实现类"。常见实现是 **`RequestMappingHandlerMapping`**（处理 @RequestMapping）和 **`SimpleUrlHandlerMapping`**（按 URL 映射）。
 
 ### AbstractHandlerMapping
 获取HandlerExecutionChain,具体实现代码如下
@@ -83,17 +83,17 @@ GetHandler实现依赖于HandlerMapping,HandlerMapping有两个最主要的实�
 ```
 getHandlerInternal的实现主要是AbstractHandlerMethodMapping实现,整个过程简单的概括一下
 - 扫描注册@GetMapping,@RequestMapping类似的Bean
-- 使用注册表MappingRegistry获取对应的Handler,通过Map获取
-```shell
-//nameLookup 属性 Mapping 的名字与 HandlerMethod 的映射。KEY 为 Mapping 的名字
-private final Map<String, List<HandlerMethod>> nameLookup = new ConcurrentHashMap<>();
+- 用注册表 MappingRegistry 查找对应的 Handler，核心是 `mappingLookup`（Mapping → HandlerMethod），而不是 `nameLookup`（后者只用于按名字查找）。大致结构：
+```java
+// mappingLookup：请求匹配信息 Mapping 与 HandlerMethod 的映射
+private final Map<T, HandlerMethod> mappingLookup = new LinkedHashMap<>();
 ```
 
 此时Handler,它是对Controller的Bean本身和请求Method的包装。而HandlerExecutionChain 是handler的二次包装，将handler与拦截器链关联到了一起。最终在在DispatcherServlet中完成了拦截器链对handler的过滤。
 
 
 ## 第二点 getHandlerAdapter()
-adapter不太准确,应该是Executor,获取具体的执行方法,例如实现类SimpleControllerHandlerAdapter
+HandlerAdapter 是适配器模式的体现，负责把不同类型的 Handler 适配成统一的执行方式。例如 SimpleControllerHandlerAdapter 处理实现了 Controller 接口的 Handler：
 ```shell
     //判断Handler是不是Controller
 	@Override

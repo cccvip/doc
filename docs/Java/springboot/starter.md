@@ -217,7 +217,7 @@ public static void invokeBeanFactoryPostProcessors(
 	
 ```  
 
-- 后续加载就按照Spring的正常流程处理,进行Bean的初始化,属性填充,实例化(前置处理,后置处理)等等流程
+- 后续就按 Spring 的正常流程处理：**实例化 → 属性填充 → 初始化**（其中穿插 BeanPostProcessor 的前置/后置处理）。
 
 
 

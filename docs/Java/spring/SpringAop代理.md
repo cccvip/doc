@@ -77,9 +77,9 @@ public abstract class AbstractAutoProxyCreator extends ProxyProcessorSupport
     	}
 }
 ```
-AbstractAutoProxyCreator实现了两类接口，BeanFactoryAware和BeanPostProcessor
-- postProcessBeforeInstantiation：主要是处理使用了@Aspect注解的切面类，然后将切面类的所有切面方法根据使用的注解生成对应Advice，并将Advice连同切入点匹配器和切面类等信息一并封装到Advisor
-- ProcessAfterInitialization：主要负责将Advisor注入到合适的位置，创建代理（cglib或jdk)，为后面给代理进行增强实现做准备。
+AbstractAutoProxyCreator 实现了 BeanFactoryAware 和 SmartInstantiationAwareBeanPostProcessor（后者继承 BeanPostProcessor）。
+- postProcessBeforeInstantiation：只在存在**自定义 TargetSource** 时提前创建代理（源码注释写得很清楚：`Create proxy here if we have a custom TargetSource`）。它**不负责**解析 @Aspect —— @Aspect 到 Advisor 的解析是 `AnnotationAwareAspectJAutoProxyCreator` 在查找候选 Advisor 时完成的。
+- postProcessAfterInitialization：普通 Bean 的代理在这里生成——调用 `wrapIfNecessary` 收集匹配的 Advisor，再用 JDK 或 CGLIB 创建代理。
 
 动态代理主要有两种实现方式(cglib或jdk)
 ```java
