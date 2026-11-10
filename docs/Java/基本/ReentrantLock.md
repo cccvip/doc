@@ -1,8 +1,8 @@
-#what
+# what
 ReentrantLock是Java中的一个线程同步机制，它实现了Lock接口。与synchronized关键字相比，ReentrantLock提供了更灵活的锁定操作。
 
 
-#how
+# how
 使用
 ```java
 import java.util.concurrent.locks.ReentrantLock;
@@ -34,11 +34,13 @@ addWaiter(Node,arg)
 
 ![img.png](_assets/addWaiter.png)
 
-第一种情况：第一次获取对象锁失败,此时还被其他线程占用
+第一种情况：当前节点是队列里的第一个等待者（p == head），并且此时锁恰好可用
 
 if (p == head && tryAcquire(arg)) {//省略}
 
-此时p==head 是True，执行获取tryAcquire(1) 的时候,能够成功获得对象
+这时 p == head 为 true，tryAcquire 成功，当前线程拿到锁；随后把自己设为新的 head，并把旧 head 的 next 置空帮助 GC。
+
+注意：这**不是**"第一次抢锁失败"的场景，而是"排队后轮到自己、恰好能拿到锁"的快速路径。
 ```java
 public abstract class AbstractQueuedSynchronizer
         extends AbstractOwnableSynchronizer
@@ -78,7 +80,7 @@ if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt()){//省略}
 
 `shouldParkAfterFailedAcquire`
 
-当前的节点获取资源是需要由前置节点唤醒, 第一次循环进入`shouldParkAfterFailedAcquire`是返回的false，此时的waitStatus是默认值, 将它设置为`Node.*SIGNAL。` 第二次进入循环 if(ws==Node.SIGNAL) 为true 直接返回true*
+当前节点需要由前驱节点唤醒。第一次进入 `shouldParkAfterFailedAcquire` 返回 false：此时前驱的 waitStatus 是默认值 0，会被 CAS 设置为 `Node.SIGNAL`；第二次进入循环时 `ws == Node.SIGNAL` 为 true，直接返回 true，随后 park。
 
 ```shell
 private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
@@ -134,9 +136,9 @@ public final boolean release(int arg) {
     }
 ```
 
-`tryRelease: AQS队列中的state,exclusiveOwnerThread 设置为空`
+`tryRelease：state 递减，减到 0 时把 exclusiveOwnerThread 置空（释放锁）。`
 
-`head的waitStatus不为空,则代表当前队列中存在线程、需要被唤醒获取资源。`
+`head 的 waitStatus 不为 0，说明队列里还有需要被唤醒的线程。`
 
 **unparkSuccessor(h)**
 
@@ -150,7 +152,7 @@ private void unparkSuccessor(Node node) {
         int ws = node.waitStatus;
         if (ws < 0)
             compareAndSetWaitStatus(node, ws, 0);
-				//从尾节点忘前找,找到一个合适的头唤醒
+				//从尾节点往前找,找到第一个合适的节点唤醒
         Node s = node.next;
         if (s == null || s.waitStatus > 0) {
             s = null;
@@ -168,7 +170,7 @@ private void unparkSuccessor(Node node) {
 
 1. 锁状态。我们要知道锁是不是被别的线程占有了，这个就是 state 的作用，它为 0 的时候代表没有线程占有锁，可以去争抢这个锁，用 CAS 将 state 设为 1，如果 CAS 成功，说明抢到了锁，这样其他线程就抢不到了，如果锁重入的话，state进行 +1 就可以，解锁就是减 1，直到 state 又变为 0，代表释放锁，所以 lock() 和 unlock() 必须要配对啊。然后唤醒等待队列中的第一个线程，让其来占有锁。
 2. 线程的阻塞和解除阻塞。AQS 中采用了 LockSupport.park(thread) 来挂起线程，用 unpark 来唤醒线程。
-3. 阻塞队列。因为争抢锁的线程可能很多，但是只能有一个线程拿到锁，其他的线程都必须等待，这个时候就需要一个 queue 来管理这些线程，AQS 用的是一个 FIFO 的队列，就是一个链表，每个 node 都持有后继节点的引用。
+3. 阻塞队列。因为争抢锁的线程可能很多，但是只能有一个线程拿到锁，其他的线程都必须等待，这个时候就需要一个 queue 来管理这些线程，AQS 用的是一个 FIFO 的队列（CLH 变体），就是一个双向链表，每个 node 都持有前驱和后继的引用。
 
 ### 公平锁与非公平锁的区别
 
