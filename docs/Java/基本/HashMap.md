@@ -1,5 +1,5 @@
 # what
-Java中的HashMap是一种用于存储键值对的数据结构。它是基于哈希表实现的，可以快速地插入、删除和查找元素。HashMap中的每个元素由一个键和一个值组成，键是唯一的，值可以重复。它提供了常数时间复杂度的插入和查找操作，但不保证元素的顺序。
+Java中的HashMap是一种用于存储键值对的数据结构。它是基于哈希表实现的，可以快速地插入、删除和查找元素。HashMap中的每个元素由一个键和一个值组成，键是唯一的，值可以重复。它平均提供 O(1) 的插入和查找操作（哈希冲突严重时最坏会退化到 O(n) 或 O(log n)），并且不保证元素的顺序。
 
 ![.hashMap.png](hashMap.png)
 
@@ -83,7 +83,7 @@ abc的hashcode值为
 
 - 初始化容量
 
-初始化数组的长度必须是2的最小次幂
+初始化数组的长度必须是 2 的整数次幂（这样 `capacity - 1` 才能当作低位掩码来用）
 
 - 负载因子
 
@@ -116,33 +116,38 @@ List<String> list = new ArrayList<>();
 
         for (int i = 0; i < size; i++) {
             String d = list.get(i);
-            int hash = d.hashCode() & (d.hashCode() >>> 16);
-            System.out.println("字符串：" + d + " \tIdx(16)：" + Integer.toBinaryString((16 - 1) & hash) +  "\tIdx(16)"+Integer.toBinaryString((32 - 1) & hash));
+            int hash = d.hashCode() ^ (d.hashCode() >>> 16);
+            System.out.println("字符串：" + d + " \tIdx(16)：" + Integer.toBinaryString((16 - 1) & hash) +  "\tIdx(32)："+Integer.toBinaryString((32 - 1) & hash));
         }
 ```
 打印结果
 ```shell
-字符串：jlkk 	Idx(16)：0	Idx(32)0
-字符串：lopi 	Idx(16)：0	Idx(32)10000
-字符串：jmdw 	Idx(16)：0	Idx(32)10000
-字符串：e4we 	Idx(16)：1100	Idx(32)1100
-字符串：io98 	Idx(16)：1	Idx(32)1
-字符串：nmhg 	Idx(16)：10	Idx(32)10010
-字符串：vfg6 	Idx(16)：111	Idx(32)10111
-字符串：gfrt 	Idx(16)：0	Idx(32)0
-字符串：alpo 	Idx(16)：1000	Idx(32)1000
-字符串：vfbh 	Idx(16)：110	Idx(32)10110
-字符串：bnhj 	Idx(16)：1110	Idx(32)1110
-字符串：zuio 	Idx(16)：1	Idx(32)1
-字符串：iu8e 	Idx(16)：1	Idx(32)10001
-字符串：yhjk 	Idx(16)：0	Idx(32)10000
-字符串：plop 	Idx(16)：100	Idx(32)10100
-字符串：dd0p 	Idx(16)：0	Idx(32)0
+字符串：jlkk 	Idx(16)：11	Idx(32)：10011
+字符串：lopi 	Idx(16)：1110	Idx(32)：1110
+字符串：jmdw 	Idx(16)：111	Idx(32)：111
+字符串：e4we 	Idx(16)：11	Idx(32)：10011
+字符串：io98 	Idx(16)：100	Idx(32)：10100
+字符串：nmhg 	Idx(16)：1101	Idx(32)：1101
+字符串：vfg6 	Idx(16)：1000	Idx(32)：1000
+字符串：gfrt 	Idx(16)：1	Idx(32)：10001
+字符串：alpo 	Idx(16)：111	Idx(32)：111
+字符串：vfbh 	Idx(16)：1	Idx(32)：1
+字符串：bnhj 	Idx(16)：0	Idx(32)：0
+字符串：zuio 	Idx(16)：1000	Idx(32)：11000
+字符串：iu8e 	Idx(16)：1000	Idx(32)：1000
+字符串：yhjk 	Idx(16)：1000	Idx(32)：1000
+字符串：plop 	Idx(16)：1001	Idx(32)：1001
+字符串：dd0p 	Idx(16)：1110	Idx(32)：1110
 ```
 
-通过输出的结论可以等出一个公式,如果 oldCap&newCap=0 下标不变 不为0 则增加到需要扩容的位数(ex: 16)。扩容大小刚好为2的幂次方。
+从输出可以得出结论：扩容到 32 时，看的是 hash 的第 5 位（也就是 oldCap=16 对应的那一位）。
 
-每次容量满足3/4进行扩容的原因 : table.length-(table.length>>2)
+- 如果 `hash & oldCap == 0`：下标不变；
+- 如果 `hash & oldCap != 0`：新下标 = 旧下标 + oldCap（本例就是 +16）。
+
+所以 JDK 8 扩容时不需要重新计算 hash，只要判断这一位，就能把原链表拆成"低位链"和"高位链"。
+
+为什么是 3/4 就扩容：默认 `loadFactor = 0.75`，阈值 `threshold = table.length - (table.length >> 2)`（等价于 capacity × 0.75，容量 16 时就是 12）；元素数超过阈值就扩容。
 
 - 链表树化
 
@@ -165,13 +170,13 @@ table.length≥64 && 链表长度≥8的时候
   从冲突的位置再接着往下找,给冲突元素找个空位
 
 
-### SynchorizedMap hashmap hashtable之间的区别？
+### SynchronizedMap、HashMap、Hashtable 之间的区别？
 
-- SynchorizedMap 是线程安全的,使用了synchorized进行加锁处理,put,get操作都能保证数据是线程安全
-- hashtable Vs HashMap
-hashtable允许key,value为null.HashMap则不可以
-hashtable是线程安全,hashmap不是。
-迭代器实现方式不一样 hashMap是fail-fast。hashtable是fail-safe。  
+- `Collections.synchronizedMap` 是线程安全的：它内部持有一个 mutex 对象，通过对 mutex 加 `synchronized` 来保证 put/get 等操作的线程安全。
+- Hashtable vs HashMap
+  - HashMap 允许**一个 null key 和多个 null value**；Hashtable **两者都不允许**，传入 null 会直接抛 NullPointerException。
+  - Hashtable 是线程安全（方法上加了 synchronized），HashMap 不是。
+  - 迭代器行为不同：HashMap 的 Iterator 是 fail-fast（modCount 变化会抛 ConcurrentModificationException）；Hashtable 的 Enumerator **不是 fail-fast**，并发修改不会抛 CME，但也不保证读到最新数据，不能简单等同于 fail-safe。  
   
 ### 为什么hashtable不允许为空？
 - 源码设计上如果传入为null 会报空指针异常。
