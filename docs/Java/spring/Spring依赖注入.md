@@ -1,4 +1,26 @@
-依赖注入（Dependency Injection，DI）解决的是"对象怎么拿到它依赖的对象"。比如 `OrderService` 要用 `OrderDao`，它不自己 `new OrderDao()`，而是声明一个字段，由 Spring 在创建 `OrderService` 时把 `OrderDao` 塞进来。
+依赖注入（Dependency Injection，DI）说的是：一个类需要用到另一个类时，不在自己内部 `new`，而是由外部把对象创建好、再"注入"进来。这里的"依赖"，就是当前类需要用到的其他对象。
+
+以 `OrderService` 和 `OrderDao` 为例：
+
+```java
+// 不用 DI：OrderService 自己创建依赖
+class OrderService {
+    void create() {
+        OrderDao dao = new OrderDao();   // 和具体实现绑死，换实现、写测试都麻烦
+        dao.insert();
+    }
+}
+
+// 用 DI：依赖由外部注入
+class OrderService {
+    private OrderDao dao;                // 只声明，不创建
+    OrderService(OrderDao dao) {
+        this.dao = dao;                  // 构造器注入
+    }
+}
+```
+
+这样做的好处：`OrderService` 不需要知道 `OrderDao` 怎么创建、用哪个实现；换实现或写单元测试时，直接传一个实现或假对象进去就行；对象的创建和生命周期也统一交给容器管理。
 
 这篇讲清两件事：Spring 怎么找到"哪些字段/方法需要注入"，以及"依赖到底是怎么被查出来、又怎么赋值的"。以 `@Autowired` 为例，主线是 `AutowiredAnnotationBeanPostProcessor`。
 
