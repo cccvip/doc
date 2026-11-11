@@ -312,6 +312,28 @@ protected void populateBean(String beanName, RootBeanDefinition mbd, @Nullable B
 
 符合条件的 Bean 会被适配成 `DisposableBeanAdapter`，存进 `disposableBeans`（一个 `LinkedHashMap`）。等容器调用 `close()` → `destroySingletons()` 时，再按登记顺序统一回调。
 
+# 实战与常见坑
+
+## 场景：三种初始化回调怎么选
+
+`initializeBean` 的顺序是：Aware → `postProcessBeforeInitialization` → `invokeInitMethods` → `postProcessAfterInitialization`。三种初始化写法分别落在不同位置：
+
+| 写法 | 由谁触发 | 适合场景 |
+|---|---|---|
+| `@PostConstruct` | `InitDestroyAnnotationBeanPostProcessor.postProcessBeforeInitialization` | 业务代码里做轻量初始化，依赖已经注入 |
+| `InitializingBean.afterPropertiesSet()` | `invokeInitMethods` | 写基础设施、需要强制契约时 |
+| `init-method` | `invokeInitMethods`，排在 `afterPropertiesSet()` 之后 | 想把初始化方法配置化，比如 `@Bean(initMethod = "start")` |
+
+选择建议：业务代码优先 `@PostConstruct`；框架扩展用 `InitializingBean`；需要配置化时用 `init-method`。三者的顺序固定，不要写重复逻辑。
+
+## 常见坑
+
+1. **在构造器里用 `@Autowired` 字段**：构造器执行时属性还没填充，字段是 `null`。需要依赖就放到构造器参数里。
+2. **在 `@PostConstruct` 里做耗时操作**：它发生在容器启动阶段，会拖慢启动；耗时逻辑交给 `SmartInitializingSingleton` 或 `ApplicationRunner`。
+3. **同时实现 `@PostConstruct` 和 `afterPropertiesSet`**：两个都会执行，顺序是 `@PostConstruct` → `afterPropertiesSet` → `init-method`。
+4. **以为 prototype 也会走销毁回调**：容器只管理单例的销毁；prototype 的清理要自己负责。
+5. **`BeanPostProcessor` 里直接注入另一个 `BeanPostProcessor`**：容易触发过早初始化，必要时用 `static @Bean` 方法或 `ObjectProvider` 延迟获取。
+
 # 小结
 
 1. **BeanDefinition 从哪来？** `ClassPathBeanDefinitionScanner.doScan` 扫描、筛选、生成，此时还没有 Bean 实例。
