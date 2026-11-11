@@ -337,7 +337,7 @@ protected String determineAutowireCandidate(Map<String, Object> candidates, Depe
 
 `@Qualifier` 在最前面，是因为它在 `findAutowireCandidates` 的 `isAutowireCandidate` 里就已经把候选筛掉了。
 
-### 字段注入
+## 字段注入
 
 `AutowiredFieldElement.inject` 把字段封装成 `DependencyDescriptor`，解析后反射赋值：
 
@@ -369,7 +369,7 @@ private Object resolveFieldValue(Field field, Object bean, @Nullable String bean
 }
 ```
 
-### Setter / 方法注入
+## Setter / 方法注入
 
 `AutowiredMethodElement` 把每个参数封装成 `DependencyDescriptor`，解析完后反射调用方法：
 
@@ -397,7 +397,7 @@ private Object[] resolveMethodArguments(Method method, Object bean, @Nullable St
 }
 ```
 
-### 构造器注入
+## 构造器注入
 
 构造器注入不在属性填充阶段，而是在**实例化阶段**：`AutowiredAnnotationBeanPostProcessor` 实现 `SmartInstantiationAwareBeanPostProcessor.determineCandidateConstructors`，帮 `createBeanInstance` 挑构造器。
 
