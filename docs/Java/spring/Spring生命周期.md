@@ -59,11 +59,34 @@ public class App {
 
 ## preInstantiateSingletons
 
-*分支很多，只抓核心：*
+容器启动时，`DefaultListableBeanFactory.preInstantiateSingletons()` 会把所有**非懒加载的单例**挨个创建出来：
 
-1. 遍历所有 BeanDefinition 的名字；
-2. 判断是否已在三级缓存中，不在就执行 `createBean(beanName, mbd, args)`；
-3. `createBean` 里先把 `beanClass` 解析成 `Class`（`doResolveBeanClass`）。
+```java
+@Override
+public void preInstantiateSingletons() throws BeansException {
+    List<String> beanNames = new ArrayList<>(this.beanDefinitionNames);   // 所有定义的名字
+    for (String beanName : beanNames) {
+        RootBeanDefinition bd = getMergedLocalBeanDefinition(beanName);
+        // 只处理：非抽象、单例、非懒加载
+        if (!bd.isAbstract() && bd.isSingleton() && !bd.isLazyInit()) {
+            if (isFactoryBean(beanName)) {
+                // FactoryBean：先取 & 再 getObject()，细节略
+                Object bean = getBean(FACTORY_BEAN_PREFIX + beanName);
+                if (bean instanceof FactoryBean) {
+                    // ...
+                }
+            } else {
+                getBean(beanName);   // 核心入口：→ doGetBean → getSingleton → createBean
+            }
+        }
+    }
+    // 全部实例化后，回调 SmartInitializingSingleton.afterSingletonsInstantiated()
+}
+```
+
+这里只是"挨个点名"，真正的创建在 `getBean` → `doGetBean` 里：先查缓存（三级缓存、循环依赖都在那里），没有再 `createBean`。缓存部分见 [Spring循环依赖.md](Spring循环依赖.md)。
+
+## createBean：给 BeanPostProcessor 一次"提前返回"的机会
 
 ```java
 public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFactory
@@ -105,24 +128,133 @@ public abstract class AbstractAutowireCapableBeanFactory extends AbstractBeanFac
 
 ## doCreateBean：Bean 的一生
 
-真正创建 Bean 的是 `doCreateBean`，按顺序：
+真正创建 Bean 的是 `doCreateBean`。先整段贴出来，逐行看：
 
-1. **实例化**，三种方式任选：
-   - BeanDefinition 设了 `Supplier` → 调 `Supplier.get()`；
-   - 设了 `factoryMethod` → 用工厂方法；
-   - 都没有 → 默认用无参构造；
-2. **`MergedBeanDefinitionPostProcessor.postProcessMergedBeanDefinition()`**：属性赋值前的扩展点（`@Autowired` 等就是在这里收集注入点的）；
-3. **属性填充**：处理 `@Autowired`、`@Resource`、`@Value` 等，由 `InstantiationAwareBeanPostProcessor.postProcessProperties()` 完成（详见 [Spring依赖注入.md](Spring依赖注入.md)）；
-4. **Aware 回调**：给 Bean 回传容器相关的对象：
-   - `BeanNameAware` → `beanName`
-   - `BeanClassLoaderAware` → `classLoader`
-   - `BeanFactoryAware` → `beanFactory`
-   - 更多 Aware 见 [SpringAware.md](SpringAware.md)
-5. **初始化前**：`BeanPostProcessor.postProcessBeforeInitialization()`；
-6. **初始化**：
-   - 实现了 `InitializingBean` → 调 `afterPropertiesSet()`；
-   - BeanDefinition 指定的 `init-method`；
-7. **初始化后**：`BeanPostProcessor.postProcessAfterInitialization()`——**AOP 代理在这里生成**（见 [SpringAop代理.md](SpringAop代理.md)）。
+```java
+protected Object doCreateBean(String beanName, RootBeanDefinition mbd, @Nullable Object[] args)
+        throws BeanCreationException {
+
+    // ① 实例化：先造一个"空壳"，属性还没填
+    BeanWrapper instanceWrapper = null;
+    if (mbd.isSingleton()) {
+        instanceWrapper = this.factoryBeanInstanceCache.remove(beanName);
+    }
+    if (instanceWrapper == null) {
+        // 反射调构造 / 工厂方法 / Supplier，具体走 createBeanInstance
+        instanceWrapper = createBeanInstance(beanName, mbd, args);
+    }
+    Object bean = instanceWrapper.getWrappedInstance();
+    Class<?> beanType = instanceWrapper.getWrappedClass();
+
+    // ② 收集注入点：@Autowired 等在这里被扫出来
+    //    （AutowiredAnnotationBeanPostProcessor.postProcessMergedBeanDefinition）
+    synchronized (mbd.postProcessingLock) {
+        if (!mbd.postProcessed) {
+            applyMergedBeanDefinitionPostProcessors(mbd, beanType, beanName);
+            mbd.postProcessed = true;
+        }
+    }
+
+    // ③ 提前暴露：把 ObjectFactory 放进三级缓存，循环依赖靠它
+    boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences &&
+            isSingletonCurrentlyInCreation(beanName));
+    if (earlySingletonExposure) {
+        addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
+    }
+
+    // ④ 属性填充 + 初始化
+    Object exposedObject = bean;
+    try {
+        populateBean(beanName, mbd, instanceWrapper);                  // @Autowired / @Value 注入
+        exposedObject = initializeBean(beanName, exposedObject, mbd);  // Aware → 初始化 → AOP 代理
+    } catch (Throwable ex) {
+        throw new BeanCreationException(beanName, "Initialization of bean failed", ex);
+    }
+
+    // ⑤ 注册销毁回调（DisposableBean / destroy-method / @PreDestroy）
+    registerDisposableBeanIfNecessary(beanName, bean, mbd);
+
+    return exposedObject;
+}
+```
+
+主线记成一句话：**实例化 → 收集注入点 → 提前暴露 → 属性填充 → 初始化（生成代理）→ 注册销毁**。
+
+- **实例化**的三种方式：`Supplier.get()`、`factoryMethod`、默认无参构造，都在 `createBeanInstance` 里选；
+- **收集注入点**：`MergedBeanDefinitionPostProcessor`，`@Autowired` 在这里被扫出来；
+- **提前暴露**：只对"单例 + 正在创建 + 允许循环依赖"的 Bean 做，详见 [Spring循环依赖.md](Spring循环依赖.md)；
+- **属性填充**：下一节 `populateBean`；
+- **初始化**：下一节 `initializeBean`；
+- **注册销毁**：`registerDisposableBeanIfNecessary`，容器关闭时统一回调。
+
+## initializeBean：Aware、初始化和代理
+
+`doCreateBean` 的第 ④ 步调用了 `initializeBean`，Bean 的"初始化阶段"全在这里：
+
+```java
+protected Object initializeBean(String beanName, Object bean, @Nullable RootBeanDefinition mbd) {
+    // ① 回调 Aware：BeanNameAware / BeanClassLoaderAware / BeanFactoryAware
+    invokeAwareMethods(beanName, bean);
+
+    Object wrappedBean = bean;
+    if (mbd == null || !mbd.isSynthetic()) {
+        // ② 初始化前：BeanPostProcessor.postProcessBeforeInitialization
+        wrappedBean = applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);
+    }
+
+    // ③ 初始化：InitializingBean.afterPropertiesSet() / init-method
+    invokeInitMethods(beanName, wrappedBean, mbd);
+
+    if (mbd == null || !mbd.isSynthetic()) {
+        // ④ 初始化后：BeanPostProcessor.postProcessAfterInitialization
+        //    AOP 代理就是在这里把原对象包成代理返回的
+        wrappedBean = applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName);
+    }
+    return wrappedBean;
+}
+```
+
+> `invokeAwareMethods` 只处理 `BeanNameAware`、`BeanClassLoaderAware`、`BeanFactoryAware`；`ApplicationContextAware` 等由 `ApplicationContextAwareProcessor` 在"初始化前"回调，详见 [SpringAware.md](SpringAware.md)。
+
+## populateBean：@Autowired 是在哪一步注入的
+
+`initializeBean` 之前，`doCreateBean` 先调了 `populateBean`。它除了处理 XML 的 `<property>`，还会触发 `InstantiationAwareBeanPostProcessor.postProcessProperties`——`@Autowired` 的注入就在这一步：
+
+```java
+protected void populateBean(String beanName, RootBeanDefinition mbd, @Nullable BeanWrapper bw) {
+    // 实例化之后、属性填充之前的扩展点（返回 false 表示跳过后续填充）
+    if (!mbd.isSynthetic() && hasInstantiationAwareBeanPostProcessors()) {
+        for (InstantiationAwareBeanPostProcessor bp : getBeanPostProcessorCache().instantiationAware) {
+            if (!bp.postProcessAfterInstantiation(bw.getWrappedInstance(), beanName)) {
+                return;
+            }
+        }
+    }
+
+    PropertyValues pvs = (mbd.hasPropertyValues() ? mbd.getPropertyValues() : null);
+
+    // 老式 autowire="byName / byType" 的处理（注解版基本不用）
+    int resolvedAutowireMode = mbd.getResolvedAutowireMode();
+    if (resolvedAutowireMode == AUTOWIRE_BY_NAME || resolvedAutowireMode == AUTOWIRE_BY_TYPE) {
+        // autowireByName / autowireByType，略
+    }
+
+    // 关键：@Autowired / @Resource / @Value 通过 postProcessProperties 注入
+    for (InstantiationAwareBeanPostProcessor bp : getBeanPostProcessorCache().instantiationAware) {
+        PropertyValues pvsToUse = bp.postProcessProperties(pvs, bw.getWrappedInstance(), beanName);
+        if (pvsToUse == null) {
+            return;
+        }
+        pvs = pvsToUse;
+    }
+
+    if (pvs != null) {
+        applyPropertyValues(beanName, mbd, bw, pvs);   // 把属性值真正 set 进去
+    }
+}
+```
+
+> 这和 [Spring依赖注入.md](Spring依赖注入.md) 是一件事的两个视角：那边讲"怎么找、怎么塞"，这里只交代"它发生在生命周期的哪一步"。
 
 # 初始化的三种回调
 
@@ -150,7 +282,7 @@ Bean 的"初始化"有三种写法，执行顺序是：
 
 1. **BeanDefinition 从哪来？** `ClassPathBeanDefinitionScanner.doScan` 扫描、筛选、生成。
 2. **容器启动做了啥？** `refresh()` → `invokeBeanFactoryPostProcessors`（改定义）→ 注册 `BeanPostProcessor` → `preInstantiateSingletons`（实例化）。
-3. **Bean 的完整生命周期？** 实例化 → 属性填充 → Aware → 初始化前 → 初始化 → 初始化后（生成代理）→ 使用 → 销毁。
+3. **Bean 的完整生命周期？** 实例化 → 收集注入点 → 提前暴露（三级缓存）→ 属性填充 → Aware 回调 → 初始化前 → 初始化 → 初始化后（生成代理）→ 使用 → 销毁。
 4. **`resolveBeforeInstantiation` 干什么？** 给 `BeanPostProcessor` 一个提前返回实例（代理）的机会；普通 Bean 通常返回 null，走正常的 `doCreateBean`。
 5. **三种初始化回调的顺序？** `@PostConstruct` → `afterPropertiesSet()` → `init-method`。
 6. **怎么成为可销毁 Bean？** 实现 `DisposableBean`/`AutoCloseable`、指定 `destroyMethod`、或带 `@PreDestroy` 等。
