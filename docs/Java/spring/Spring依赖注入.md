@@ -1,3 +1,29 @@
+`@Autowired` 几乎是每个 Spring 项目都会用到的注解，但很多人只停留在"按类型注入"这一层：它到底在哪一步生效、同类型多个 Bean 时凭什么选这一个、为什么 `static` 字段注不进去，这些问题其实都能在源码里找到明确答案。
+
+这篇按"先找注入点、再解析依赖、最后反射赋值"的顺序，把 `AutowiredAnnotationBeanPostProcessor` 的关键方法走一遍。如果只为面试，可以直接滑到最后的**小结**。
+
+# 总览
+
+**一句话：`@Autowired` 只做两件事——先找到注入点，再按类型解析依赖并反射赋值。**
+
+处理者是 `AutowiredAnnotationBeanPostProcessor`，它实现 `SmartInstantiationAwareBeanPostProcessor` 和 `MergedBeanDefinitionPostProcessor`，在 Bean 的属性填充阶段工作。整体链路：
+
+```text
+AutowiredAnnotationBeanPostProcessor
+  ├─ postProcessMergedBeanDefinition   → 找注入点，缓存到 InjectionMetadata
+  └─ postProcessProperties             → 执行注入
+        └─ resolveDependency
+              └─ doResolveDependency
+                    ├─ findAutowireCandidates      按类型找候选
+                    └─ determineAutowireCandidate  多个候选时选一个
+```
+
+> 注入发生在 Bean 生命周期的"属性填充"阶段，位置见 [Spring生命周期.md](Spring生命周期.md) 的 `populateBean`。
+
+# 关键概念
+
+## 什么是依赖注入
+
 依赖注入（Dependency Injection，DI）说的是：一个类需要用到另一个类时，不在自己内部 `new`，而是由外部把对象创建好、再"注入"进来。这里的"依赖"，就是当前类需要用到的其他对象。
 
 以 `OrderService` 和 `OrderDao` 为例：
@@ -22,16 +48,29 @@ class OrderService {
 
 这样做的好处：`OrderService` 不需要知道 `OrderDao` 怎么创建、用哪个实现；换实现或写单元测试时，直接传一个实现或假对象进去就行；对象的创建和生命周期也统一交给容器管理。
 
-这篇讲清两件事：Spring 怎么找到"哪些字段/方法需要注入"，以及"依赖到底是怎么被查出来、又怎么赋值的"。以 `@Autowired` 为例，主线是 `AutowiredAnnotationBeanPostProcessor`。
+## 三种注入方式
 
-> 注入发生在 Bean 生命周期的"属性填充"阶段，位置见 [Spring生命周期.md](Spring生命周期.md) 的 `populateBean`。
+| 方式 | 发生阶段 | 特点 |
+|---|---|---|
+| 字段注入 | 属性填充 | 写法最短，但依赖关系不直观，单元测试不好替换 |
+| setter 注入 | 属性填充 | 依赖可选，可以在运行时重新设置 |
+| 构造器注入 | 实例化 | 依赖创建时就必须就位，不可变，推荐优先使用 |
 
-# 总览
+## @Autowired / @Resource / @Inject
 
-`@Autowired` 的处理者是 `AutowiredAnnotationBeanPostProcessor`，它实现 `SmartInstantiationAwareBeanPostProcessor` 和 `MergedBeanDefinitionPostProcessor`，在属性填充阶段做两件事：
+| | `@Autowired` | `@Resource` | `@Inject` |
+|---|---|---|---|
+| 来源 | Spring | JSR-250 | JSR-330 |
+| 默认策略 | 按类型（byType） | 按名字（byName），找不到再按类型 | 按类型（byType） |
+| 指定名字 | `@Qualifier` | `name` 属性 | `@Named` |
+| 必需性 | `required=true` | 默认必需 | 默认必需 |
+| 处理者 | `AutowiredAnnotationBeanPostProcessor` | `CommonAnnotationBeanPostProcessor` | `AutowiredAnnotationBeanPostProcessor` |
 
-1. **找注入点**：哪些字段、方法需要注入？——`postProcessMergedBeanDefinition`
-2. **执行注入**：把依赖查出来、赋进去——`postProcessProperties`
+# 源码分析
+
+## 入口：两个回调方法
+
+`AutowiredAnnotationBeanPostProcessor` 的两个关键方法，一个负责找，一个负责注入：
 
 ```java
 public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationAwareBeanPostProcessor,
@@ -60,7 +99,7 @@ public class AutowiredAnnotationBeanPostProcessor implements SmartInstantiationA
 }
 ```
 
-# 注入点是怎么找到的
+## 找注入点：findAutowiringMetadata
 
 `findAutowiringMetadata` 先查缓存，没有才扫描。缓存 key 是 beanName（没有就用类名）：
 
@@ -146,7 +185,7 @@ private InjectionMetadata buildAutowiringMetadata(final Class<?> clazz) {
 - 桥接方法要先找到原方法，否则泛型方法会漏掉；
 - **扫描顺序是从本类往父类走**，但 `elements.addAll(0, currElements)` 是把当前类插到最前面，所以最终列表里**父类的注入点排在子类前面**，注入时也先处理父类。
 
-# 依赖是怎么解析出来的
+## 解析依赖：resolveDependency
 
 注入点收集完，`InjectionMetadata.inject` 会遍历每个元素调用 `inject`。最终都会走到 `BeanFactory.resolveDependency`：
 
@@ -229,7 +268,7 @@ public Object doResolveDependency(DependencyDescriptor descriptor, @Nullable Str
 }
 ```
 
-## 按类型找候选：findAutowireCandidates
+### 按类型找候选：findAutowireCandidates
 
 ```java
 protected Map<String, Object> findAutowireCandidates(@Nullable String beanName, Class<?> requiredType,
@@ -258,7 +297,7 @@ protected Map<String, Object> findAutowireCandidates(@Nullable String beanName, 
 
 注意 `isAutowireCandidate(candidate, descriptor)` 里已经处理了 `@Qualifier`：`QualifierAnnotationAutowireCandidateResolver` 会先按 qualifier 过滤一遍。所以 `@Qualifier` 不是在最后"选"的时候才生效，而是**提前缩小候选范围**。
 
-## 多个候选怎么选：determineAutowireCandidate
+### 多个候选怎么选：determineAutowireCandidate
 
 ```java
 protected String determineAutowireCandidate(Map<String, Object> candidates, DependencyDescriptor descriptor) {
@@ -298,9 +337,7 @@ protected String determineAutowireCandidate(Map<String, Object> candidates, Depe
 
 `@Qualifier` 在最前面，是因为它在 `findAutowireCandidates` 的 `isAutowireCandidate` 里就已经把候选筛掉了。
 
-# 三种注入方式
-
-## 字段注入
+### 字段注入
 
 `AutowiredFieldElement.inject` 把字段封装成 `DependencyDescriptor`，解析后反射赋值：
 
@@ -332,7 +369,7 @@ private Object resolveFieldValue(Field field, Object bean, @Nullable String bean
 }
 ```
 
-## Setter / 方法注入
+### Setter / 方法注入
 
 `AutowiredMethodElement` 把每个参数封装成 `DependencyDescriptor`，解析完后反射调用方法：
 
@@ -360,7 +397,7 @@ private Object[] resolveMethodArguments(Method method, Object bean, @Nullable St
 }
 ```
 
-## 构造器注入
+### 构造器注入
 
 构造器注入不在属性填充阶段，而是在**实例化阶段**：`AutowiredAnnotationBeanPostProcessor` 实现 `SmartInstantiationAwareBeanPostProcessor.determineCandidateConstructors`，帮 `createBeanInstance` 挑构造器。
 
@@ -373,17 +410,45 @@ private Object[] resolveMethodArguments(Method method, Object bean, @Nullable St
 
 构造器注入的依赖必须在对象实例化时就准备好，所以它和循环依赖的关系更紧——对象还没 new 出来，没法提前暴露，详见 [Spring循环依赖.md](Spring循环依赖.md)。
 
-# @Autowired、@Resource、@Inject 的区别
+# 实战与常见坑
 
-| | `@Autowired` | `@Resource` | `@Inject` |
-|---|---|---|---|
-| 来源 | Spring | JSR-250 | JSR-330 |
-| 默认策略 | 按类型（byType） | 按名字（byName），找不到再按类型 | 按类型（byType） |
-| 指定名字 | `@Qualifier` | `name` 属性 | `@Named` |
-| 必需性 | `required=true` | 默认必需 | 默认必需 |
-| 处理者 | `AutowiredAnnotationBeanPostProcessor` | `CommonAnnotationBeanPostProcessor` | `AutowiredAnnotationBeanPostProcessor` |
+## 实战：同类型多个实现怎么选
 
-# 常见坑
+假设有两个支付实现，`OrderService` 需要指定用微信支付：
+
+```java
+interface PayService {
+    void pay();
+}
+
+@Service("aliPay")
+class AliPayService implements PayService {
+    public void pay() { /* 支付宝 */ }
+}
+
+@Service("wxPay")
+class WxPayService implements PayService {
+    public void pay() { /* 微信 */ }
+}
+
+@Service
+class OrderService {
+    @Autowired
+    @Qualifier("wxPay")            // 没有这行会发生什么？
+    private PayService payService;
+}
+```
+
+对应到前面的源码：
+
+1. `findAutowireCandidates` 按类型找到 `aliPay` 和 `wxPay` 两个候选；
+2. `@Qualifier("wxPay")` 在 `isAutowireCandidate` 里先把 `aliPay` 过滤掉，只剩 `wxPay`；
+3. 如果去掉 `@Qualifier`，候选有两个，`determineAutowireCandidate` 会依次看 `@Primary`、`@Priority`、字段名匹配；
+4. 字段名 `payService` 和 `aliPay`、`wxPay` 都不匹配，最终抛 `NoUniqueBeanDefinitionException`。
+
+解决办法就是源码里那几种：加 `@Qualifier`、给其中一个加 `@Primary`、或者把字段改成和 Bean 名一致。
+
+## 常见坑
 
 1. **同类型多个 Bean 却没指定**：抛 `NoUniqueBeanDefinitionException`，用 `@Primary`、`@Qualifier` 或字段名匹配解决；
 2. **`static` 字段注入失败**：`buildAutowiringMetadata` 直接跳过 static 字段；
@@ -393,6 +458,8 @@ private Object[] resolveMethodArguments(Method method, Object bean, @Nullable St
 6. **`@Resource` 不是按类型优先**：默认按名字，名字对不上才退回按类型，和 `@Autowired` 行为不同。
 
 # 小结
+
+我一向不太喜欢写总结，因为该说的正文里都说了。不过考虑到很多读者是冲着面试来的，还是列成清单：
 
 1. **`@Autowired` 的处理者是谁？** `AutowiredAnnotationBeanPostProcessor`，在属性填充阶段工作。
 2. **它分两步做什么？** `postProcessMergedBeanDefinition` 收集注入点，`postProcessProperties` 执行注入。
@@ -405,5 +472,6 @@ private Object[] resolveMethodArguments(Method method, Object bean, @Nullable St
 
 # 参考
 
+- [Spring Framework 官方文档：Annotation-based Container Configuration](https://docs.spring.io/spring-framework/reference/core/beans/annotation-config/autowired.html)
 - Spring 5.x 源码：`AutowiredAnnotationBeanPostProcessor`、`DefaultListableBeanFactory.resolveDependency`
 - [Spring生命周期.md](Spring生命周期.md)、[Spring循环依赖.md](Spring循环依赖.md)
