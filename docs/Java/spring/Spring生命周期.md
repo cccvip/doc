@@ -1,6 +1,6 @@
 Bean 的生命周期是最容易被"背步骤"糊弄过去的部分：大家都能说"实例化、属性填充、初始化"，但再问一句"这行代码在哪、谁调的、为什么排在这个位置"，就卡住了。
 
-这篇不列提纲，直接跟着 `doCreateBean` 的源码走一遍：看一个 Bean 从"一张图纸"到"一个可用对象"到底经历了什么，以及每个扩展点为什么必须在那个位置。如果只为面试，可以直接滑到最后的**小结**。
+这篇不列提纲，直接跟着 `doCreateBean` 的源码走一遍：看一个 Bean 从 BeanDefinition（类的定义信息）到最终可用的对象，具体经过哪些方法，以及每个扩展点为什么排在那个位置。如果只为面试，可以直接滑到最后的**小结**。
 
 > 基于 Spring 5.3.13。主线走注解版（`AnnotationConfigApplicationContext`），XML 形式从略。
 
@@ -20,14 +20,14 @@ public class App {
 }
 ```
 
-这两行代码背后，容器实际做了这么一串事：
+这段代码背后，容器实际做了这么一串事：
 
 ```text
-扫描包 → 生成 BeanDefinition（图纸）
+扫描包 → 生成 BeanDefinition
   → refresh()
-      → invokeBeanFactoryPostProcessors    // 改图纸
-      → registerBeanPostProcessors         // 注册扩展点
-      → preInstantiateSingletons           // 按图纸造对象
+      → invokeBeanFactoryPostProcessors    // 修改 BeanDefinition
+      → registerBeanPostProcessors         // 注册 BeanPostProcessor
+      → preInstantiateSingletons           // 按 BeanDefinition 创建 Bean
           → getBean → doGetBean
               → getSingleton（查三级缓存）
               → createBean
@@ -39,11 +39,11 @@ public class App {
 
 ![img.png](_assets/beanLifeCycle.png)
 
-记住两个阶段就够了：**先有图纸（BeanDefinition），再按图纸造对象（Bean）**。下面分开看。
+记住两个阶段就够了：**先把类解析成 BeanDefinition，再根据 BeanDefinition 创建 Bean 实例**。下面分开看。
 
-## preInstantiateSingletons：谁负责"挨个造"
+## preInstantiateSingletons：遍历定义，触发创建
 
-容器启动到最后，`DefaultListableBeanFactory.preInstantiateSingletons()` 会把所有**非懒加载的单例**点名一遍：
+容器启动到最后，`DefaultListableBeanFactory.preInstantiateSingletons()` 会遍历所有**非懒加载的单例**：
 
 ```java
 @Override
@@ -72,9 +72,9 @@ public void preInstantiateSingletons() throws BeansException {
 
 # 阶段一：先有 BeanDefinition
 
-Spring 不会拿着类名直接 `new`，它先把每个要管理的类解析成一份 `BeanDefinition`——相当于"图纸"：类型、作用域、依赖、属性、初始化/销毁方法都记在上面。
+Spring 不会拿着类名直接 `new`，它先把每个要管理的类解析成一份 `BeanDefinition`，把类型、作用域、依赖、属性、初始化/销毁方法都记在里面。
 
-图纸由 `ClassPathBeanDefinitionScanner.doScan` 生成：
+`BeanDefinition` 由 `ClassPathBeanDefinitionScanner.doScan` 生成：
 
 1. 扫描 `basePackages` 下的 `.class` 文件，拿到 `Resource` 数组；
 2. 用 `MetadataReader`（默认 `SimpleMetadataReader`）读每个类的元数据；
@@ -82,7 +82,7 @@ Spring 不会拿着类名直接 `new`，它先把每个要管理的类解析成�
 4. 给通过的类生成 `ScannedGenericBeanDefinition`；
 5. 把定义注册进 `BeanDefinitionRegistry`。
 
-这一步结束时，**容器里只有图纸，没有任何 Bean 实例**。这也解释了为什么 `BeanFactoryPostProcessor` 能改 Bean：它动手的时候对象还没造出来，改的就是图纸。
+这一步结束时，**容器里只有 BeanDefinition，没有任何 Bean 实例**。这也解释了为什么 `BeanFactoryPostProcessor` 能改 Bean：它执行时对象还没创建，改的就是 BeanDefinition。
 
 ```java
 public interface BeanFactoryPostProcessor {
@@ -101,7 +101,7 @@ public interface BeanFactoryPostProcessor {
 2. **`registerBeanPostProcessors(beanFactory)`**：把 `BeanPostProcessor` 注册进容器。必须赶在实例化之前，因为后面 `@Autowired` 注入、AOP 代理都依赖它们；
 3. **`finishBeanFactoryInitialization(beanFactory)`**：实例化所有非懒加载的单例，最终落到 `preInstantiateSingletons()`。
 
-一句话理解顺序：**先改图纸，再装工具，最后才开工。** 改图纸和装工具如果放到"开工"之后，就赶不上这次创建了。
+一句话理解顺序：**先修改 BeanDefinition，再注册 BeanPostProcessor，最后创建 Bean 实例。** 前两步如果放到创建之后，就赶不上这次创建了。
 
 ## createBean：给 BeanPostProcessor 一次"提前返回"的机会
 
@@ -315,7 +315,7 @@ protected void populateBean(String beanName, RootBeanDefinition mbd, @Nullable B
 # 小结
 
 1. **BeanDefinition 从哪来？** `ClassPathBeanDefinitionScanner.doScan` 扫描、筛选、生成，此时还没有 Bean 实例。
-2. **容器启动做了啥？** `refresh()` → `invokeBeanFactoryPostProcessors`（改图纸）→ `registerBeanPostProcessors`（装工具）→ `preInstantiateSingletons`（开工）。
+2. **容器启动做了啥？** `refresh()` → `invokeBeanFactoryPostProcessors`（修改 BeanDefinition）→ `registerBeanPostProcessors`（注册 BeanPostProcessor）→ `preInstantiateSingletons`（创建 Bean 实例）。
 3. **Bean 的完整生命周期？** 实例化 → 收集注入点 → 提前暴露（三级缓存）→ 属性填充 → Aware 回调 → 初始化前 → 初始化 → 初始化后（生成代理）→ 使用 → 销毁。
 4. **为什么属性填充在初始化之前？** 否则 `@PostConstruct` / `afterPropertiesSet` 里拿不到注入的依赖。
 5. **为什么 AOP 代理在初始化之后？** 代理要包住一个属性完整、初始化完成的对象，而不是半成品。
