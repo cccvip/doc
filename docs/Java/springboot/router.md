@@ -1,203 +1,312 @@
-# 前言
-数据库路由组件的意义是帮助应用程序将数据库操作请求路由到正确的数据库实例或分片上。在大型应用程序中，数据库通常会被分布到多个服务器上，而数据库路由组件可以根据一些规则或策略来确定应该将请求发送到哪个数据库实例。
+SaaS 多租户、业务增长后的分库分表，都会遇到同一个问题：一次请求该连哪个库、查哪张表？如果每个 DAO 方法都手动传 `tenantId`、手动拼表名，代码会到处是重复逻辑，还容易漏。
 
-数据库路由组件的主要意义包括：
+这篇用一个"垂直分库"的例子，把「AOP + ThreadLocal + AbstractRoutingDataSource」这套动态数据源方案走一遍，并列出实际落地时最容易踩的坑。自动装配和 Starter 的写法见 [starter.md](starter.md)。
 
-- 负载均衡：当应用程序需要处理大量的数据库请求时，数据库路由组件可以将请求均匀地分发到多个数据库实例上，以实现负载均衡，提高系统的整体性能和吞吐量。
+# 总览
 
-- 分片管理：数据库分片是一种将数据水平分割存储在多个数据库实例上的技术。数据库路由组件可以根据分片键或哈希算法将数据请求路由到正确的分片上，实现数据的分布式存储和查询。
+**一句话：AOP 在方法执行前把"用哪个库"放进 ThreadLocal，`AbstractRoutingDataSource` 在执行 SQL 前从 ThreadLocal 取出 key，路由到对应的数据源。**
 
-- 故障容错：当某个数据库实例发生故障时，数据库路由组件可以自动将请求重新路由到其他可用的实例上，确保应用程序的可用性和数据的完整性。
+```text
+请求进入
+  → @DatabaseSharding("tenantId") 标注的方法
+      → DynamicDataSourceAspect（@Around）
+          → 从参数里取 tenantId
+          → DynamicDataSourceHolder.set(tenantId)
+          → 执行业务
+          → finally 清理 ThreadLocal
 
-- 多租户支持：在多租户应用程序中，数据库路由组件可以根据不同的租户标识将请求路由到相应的数据库实例上，实现数据的隔离和安全性。
-
-# 保命提示
-为什么不用现成的开源的组件？为啥要自己写？ 不要杠,杠就是你对
-
-# 遇到过的场景
-- 业务增长过快遇到的分表情况
-- Sass服务,多租户存储以及查询
-
-# 需求分析
-分库分表常用的两种实现方案,
-- 垂直拆分：例如多租户,将创建多个数据库,每一个客户,都需要查询自己的数据
-- 水平拆分：水平拆分是将一个表,分成多份的表。例如订单记录,order_001,order_002,order_003。
-
-本次将使用垂直拆分,做一个单纯的分库,满足业务需求。不实现分表的主要原因是(在可见的3年内,不会遇到数据的增长瓶颈)
-# 技术方案
-1.AOP切面拦截的使用，这是因为需要给使用数据库路由的方法做上标记，便于处理分库分表逻辑 
-2.多数据源的切换操作，既然有分库那么就会涉及在多个数据源间进行链接切换，以便把数据分配给不同的数据库,不同的Schema
-综上,我们需要用到AOP、数据源切换、SpringBoot-Starter,ThreadLocal等技术
-
-
-# 技术实现
-
-## 数据源切换
-
-核心类AbstractRoutingDataSource
-
-AbstractRoutingDataSource提供了基本的数据源路由功能，它可以根据当前的上下文或者特定的条件来动态地选择合适的数据源。这个抽象类需要我们自己来实现其中的抽象方法，以便根据自己的业务需求来确定数据源的选择逻辑。
-
-但是在我写下文章的今日,已经有很多开源优秀的产品,实现多数据源
-
-```shell script
-    <dependency>
-            <groupId>com.baomidou</groupId>
-            <artifactId>dynamic-datasource-spring-boot-starter</artifactId>
-        </dependency>
+执行 SQL
+  → AbstractRoutingDataSource.determineCurrentLookupKey()
+      → DynamicDataSourceHolder.get()
+      → 从 targetDataSources 里选对应的 DataSource
 ```
+
+# 核心概念
+
+## 为什么要分库分表
+
+单库单表在数据量、并发量上来之后会遇到瓶颈：
+
+- 单表数据量大，索引变深，查询变慢；
+- 单库连接数、磁盘 IO、CPU 到顶；
+- 备份、DDL、扩容都变得困难。
+
+分库分表就是把数据拆到多个库 / 多张表，降低单点压力。
+
+## 垂直拆分 vs 水平拆分
+
+| 方式 | 含义 | 例子 |
+|---|---|---|
+| 垂直拆分 | 按业务 / 租户拆库 | 每个租户一个库，或订单库、用户库分离 |
+| 水平拆分 | 同一张表按行拆成多张 | `order_001`、`order_002`、`order_003` |
+
+这篇做的是**垂直拆分（多租户分库）**：每个租户一个库，按 `tenantId` 路由。分表暂不做，原因是短期内数据量还到不了瓶颈。
+
+## AbstractRoutingDataSource 原理
+
+Spring 提供的 `AbstractRoutingDataSource` 本身就是一个 `DataSource`，内部维护一组目标数据源：
+
+```java
+public abstract class AbstractRoutingDataSource extends AbstractDataSource implements InitializingBean {
+
+    private Map<Object, Object> targetDataSources;
+    private Object defaultTargetDataSource;
+
+    @Override
+    public Connection getConnection() throws SQLException {
+        return determineTargetDataSource().getConnection();
+    }
+
+    protected DataSource determineTargetDataSource() {
+        Object lookupKey = determineCurrentLookupKey();
+        DataSource dataSource = this.targetDataSources.get(lookupKey);
+        return (dataSource != null ? dataSource : this.defaultTargetDataSource);
+    }
+
+    // 子类实现：返回当前线程要用哪个数据源
+    @Nullable
+    protected abstract Object determineCurrentLookupKey();
+}
+```
+
+关键就是 `determineCurrentLookupKey()`：每次获取连接时，它决定用哪个目标数据源。
+
+## 为什么用 ThreadLocal
+
+数据源的选择发生在 DAO 层，而租户信息通常来自 Controller 层的参数或登录态。用 ThreadLocal 把它从上层传到下层，避免每个方法都显式传参。
+
+```java
+public final class DynamicDataSourceHolder {
+    private static final ThreadLocal<String> DS = new ThreadLocal<>();
+
+    public static void set(String ds) {
+        DS.set(ds);
+    }
+
+    public static String get() {
+        return DS.get();
+    }
+
+    public static void clear() {
+        DS.remove();
+    }
+}
+```
+
+# 实现
+
+## 1. 数据源配置
 
 ```java
 @Configuration
-@AutoConfigureBefore({DynamicDataSourceAutoConfiguration.class, SpringBootConfiguration.class})
-public class DataSourceConfiguration {
-    
-    @Resource
-    private DynamicDataSourceProperties properties;
+@AutoConfigureBefore(DataSourceAutoConfiguration.class)
+public class DynamicDataSourceConfiguration {
 
     @Bean
-    public DynamicDataSourceProvider dynamicDataSourceProvider() {
-        Map<String, DataSourceProperty> datasourceMap = properties.getDatasource();
-        return new AbstractDataSourceProvider() {
-            @Override
-            public Map<String, DataSource> loadDataSources() {
-                Map<String, DataSource> dataSourceMap = createDataSourceMap(datasourceMap);
-                return dataSourceMap;
-
-            }
-        };
+    @ConfigurationProperties("spring.datasource.master")
+    public DataSource masterDataSource() {
+        return DataSourceBuilder.create().build();
     }
-    
+
+    @Bean
+    @ConfigurationProperties("spring.datasource.tenant1")
+    public DataSource tenant1DataSource() {
+        return DataSourceBuilder.create().build();
+    }
+
+    @Bean
     @Primary
-    @Bean(name = "master")
-    public DataSource dataSource(DynamicDataSourceProvider dynamicDataSourceProvider) {
-        DynamicRoutingDataSource dataSource = new DynamicRoutingDataSource();
-        dataSource.setPrimary(properties.getPrimary());
-        dataSource.setStrict(properties.getStrict());
-        dataSource.setStrategy(properties.getStrategy());
-        dataSource.setProvider(dynamicDataSourceProvider);
-        dataSource.setP6spy(properties.getP6spy());
-        dataSource.setSeata(properties.getSeata());
-        return dataSource;
+    public DataSource dataSource(DataSource masterDataSource, DataSource tenant1DataSource) {
+        Map<Object, Object> targets = new HashMap<>();
+        targets.put("master", masterDataSource);
+        targets.put("tenant1", tenant1DataSource);
+
+        DynamicRoutingDataSource routing = new DynamicRoutingDataSource();
+        routing.setTargetDataSources(targets);
+        routing.setDefaultTargetDataSource(masterDataSource);
+        return routing;
     }
 }
 ```
 
-## Aop拦截
-Aop拦截对应的注解
-```shell script
+`DynamicRoutingDataSource` 只需要实现 `determineCurrentLookupKey`：
+
+```java
+public class DynamicRoutingDataSource extends AbstractRoutingDataSource {
+    @Override
+    protected Object determineCurrentLookupKey() {
+        return DynamicDataSourceHolder.get();
+    }
+}
+```
+
+`@Primary` 很重要：容器里有多个 `DataSource` 时，MyBatis / JdbcTemplate 默认注入的就是这个路由数据源。
+
+## 2. AOP 切换数据源
+
+```java
+@Target({ElementType.METHOD, ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface DatabaseSharding {
+    String value();   // 用哪个参数作为分库键
+}
+```
+
+```java
 @Aspect
 @Component
-@Order(0)
+@Order(0)   // 必须比事务拦截器先执行
 public class DynamicDataSourceAspect {
-    @Pointcut("@annotation(DatabaseSharding)")
-    public void aopPoint() {
-    }
 
-    @Around("aopPoint()")
-    public Object doRouter(ProceedingJoinPoint joinPoint) {
-       DatabaseSharding databaseSharding = joinPoint.getTarget().getClass().getAnnotation(DatabaseSharding.class);
-       String[] paramNames = ((MethodSignature) joinPoint.getSignature()).getParameterNames();
-       Object[] paramValues = joinPoint.getArgs();
-       String shardingColumn = "";
+    @Around("@annotation(databaseSharding)")
+    public Object route(ProceedingJoinPoint pjp, DatabaseSharding databaseSharding) throws Throwable {
+        MethodSignature signature = (MethodSignature) pjp.getSignature();
+        String[] paramNames = signature.getParameterNames();
+        Object[] args = pjp.getArgs();
 
-       for (int i = 0; i < paramNames.length; i++) {
-           if (databaseSharding.value().equals(paramNames[i])) {
-               shardingColumn = (String) paramValues[i];
-               break;
-           }
-       }
-       DynamicDataSourceHolder.set(shardingColumn);
-       try {
-           return joinPoint.proceed();
-       } catch (Throwable throwable) {
-           throwable.printStackTrace();
-       }finally {
-           DynamicDataSourceHolder.remove();
-       }
-       return null;
+        String shardingValue = null;
+        for (int i = 0; i < paramNames.length; i++) {
+            if (databaseSharding.value().equals(paramNames[i])) {
+                shardingValue = String.valueOf(args[i]);
+                break;
+            }
+        }
+        if (shardingValue == null) {
+            throw new IllegalArgumentException("@DatabaseSharding 指定的参数不存在: " + databaseSharding.value());
+        }
+
+        DynamicDataSourceHolder.set(shardingValue);
+        try {
+            return pjp.proceed();
+        } finally {
+            DynamicDataSourceHolder.clear();   // 必须清理，否则线程池复用会串库
+        }
     }
 }
 ```
-Mybaits拦截器,替换表名(小提示:可以用一个独立只读权限的数据库账号)
-```java
-@Intercepts({@Signature(type = StatementHandler.class, method = "prepare", args = {Connection.class, Integer.class})})
-public class MybatisInterceptor implements Interceptor {
 
-    private Pattern pattern = Pattern.compile("(from|into|update)[\\s]{1,}(\\w{1,})", Pattern.CASE_INSENSITIVE);
+`@Order(0)` 的作用是让数据源切面先于事务切面执行，保证事务开启时拿到的连接来自正确的数据源。
+
+## 3. MyBatis 拦截器：替换表名（可选）
+
+如果要做水平分表，可以在 MyBatis 的 `StatementHandler.prepare` 阶段改 SQL：
+
+```java
+@Intercepts(@Signature(type = StatementHandler.class, method = "prepare",
+        args = {Connection.class, Integer.class}))
+public class TableShardingInterceptor implements Interceptor {
+
+    private static final Pattern TABLE_PATTERN =
+            Pattern.compile("\\b(from|into|update)\\s+([a-zA-Z0-9_]+)", Pattern.CASE_INSENSITIVE);
 
     @Override
     public Object intercept(Invocation invocation) throws Throwable {
-        // 获取StatementHandler
-        StatementHandler statementHandler = (StatementHandler) invocation.getTarget();
-        MetaObject metaObject = MetaObject.forObject(statementHandler, SystemMetaObject.DEFAULT_OBJECT_FACTORY, SystemMetaObject.DEFAULT_OBJECT_WRAPPER_FACTORY, new DefaultReflectorFactory());
-        MappedStatement mappedStatement = (MappedStatement) metaObject.getValue("delegate.mappedStatement");
+        StatementHandler handler = (StatementHandler) invocation.getTarget();
+        MetaObject metaObject = SystemMetaObject.forObject(handler);
+        MappedStatement ms = (MappedStatement) metaObject.getValue("delegate.mappedStatement");
 
-        // 获取自定义注解判断是否进行分表操作
-        String id = mappedStatement.getId();
-        String className = id.substring(0, id.lastIndexOf("."));
-        Class<?> clazz = Class.forName(className);
-        DatabaseSharding dbRouterStrategy = clazz.getAnnotation(DatabaseSharding.class);
-        if (null != dbRouterStrategy){
+        // 只有标了 @DatabaseSharding 的 Mapper 才分表
+        String mapperId = ms.getId();
+        Class<?> mapperClass = Class.forName(mapperId.substring(0, mapperId.lastIndexOf('.')));
+        if (!mapperClass.isAnnotationPresent(DatabaseSharding.class)) {
             return invocation.proceed();
         }
-        
-        BoundSql boundSql = statementHandler.getBoundSql();
-        String sql = boundSql.getSql();
 
-  
-        Matcher matcher = pattern.matcher(sql);
-        String tableName = null;
-        if (matcher.find()) {
-            tableName = matcher.group().trim();
+        BoundSql boundSql = handler.getBoundSql();
+        String shard = DynamicDataSourceHolder.get();
+        if (shard == null || shard.isEmpty()) {
+            return invocation.proceed();
         }
-        assert null != tableName;
-        String replaceSql = matcher.replaceAll(DynamicDataSourceHolder.get());
 
-        // 通过反射修改SQL语句
-        Field field = boundSql.getClass().getDeclaredField("sql");
-        field.setAccessible(true);
-        field.set(boundSql, replaceSql);
-        field.setAccessible(false);
+        Matcher matcher = TABLE_PATTERN.matcher(boundSql.getSql());
+        StringBuffer newSql = new StringBuffer();
+        while (matcher.find()) {
+            String prefix = matcher.group(1);   // from / into / update
+            String table = matcher.group(2);
+            matcher.appendReplacement(newSql, prefix + " " + table + "_" + shard);
+        }
+        matcher.appendTail(newSql);
+
+        // 通过 MetaObject 修改 BoundSql 里的 sql
+        metaObject.setValue("delegate.boundSql.sql", newSql.toString());
         return invocation.proceed();
     }
 }
 ```
 
-## SpringBoot-Starter
+几个细节：
 
-第一步增加META-INF/spring.factories
-```shell script
-org.springframework.boot.autoconfigure.EnableAutoConfiguration=com.xxxx.DataSourceAutoConfig
-```
-第二步
-将你需要加载的所有class都new为Bean,交给Spring管理、可以使用@ConditionalOnXXX条件注解,增加严谨性。
-```shell script
-@Configuration
-public class DataSourceAutoConfig  {
+- 用 `appendReplacement` 逐段替换，不要用 `replaceAll` 直接替换整个匹配；
+- 正则只匹配 `from / into / update` 后面的表名，避免误伤字段名；
+- 表名、分片值都要做白名单校验，别把外部输入直接拼进 SQL。
 
-    @Bean(name = "db-router-point")
-    @ConditionalOnMissingBean
-    public DBRouterJoinPoint point(DBRouterConfig dbRouterConfig, IDBRouterStrategy dbRouterStrategy) {
-        return new DBRouterJoinPoint(dbRouterConfig, dbRouterStrategy);
-    }
+## 4. 注册成 Starter
 
-    @Bean
-    public DBRouterConfig dbRouterConfig() {
-        return new DBRouterConfig(dbCount, tbCount, routerKey);
-    }
+把自动配置类写进清单文件：
 
-    @Bean
-    public Interceptor plugin() {
-        return new DynamicMybaitsPlugin();
-    }
+- Spring Boot 2.6 及以前：`META-INF/spring.factories`
+- Spring Boot 2.7 / 3.x：`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`
 
+```properties
+# 2.x spring.factories
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+com.example.ds.DynamicDataSourceConfiguration
 ```
 
+```text
+# 2.7+ AutoConfiguration.imports
+com.example.ds.DynamicDataSourceConfiguration
+```
 
+自动配置类的写法、`@ConditionalOnClass` / `@ConditionalOnMissingBean` 等规范，见 [starter.md](starter.md)。
 
+# 实战与常见坑
 
+## 场景：SaaS 多租户分库
 
+1. 登录后从 token / session 里拿到 `tenantId`；
+2. 在 Service 入口方法上标 `@DatabaseSharding("tenantId")`；
+3. AOP 把 `tenantId` 放进 ThreadLocal；
+4. MyBatis 或 JdbcTemplate 获取连接时，`AbstractRoutingDataSource` 按 `tenantId` 选库；
+5. 请求结束，`finally` 清理 ThreadLocal。
 
+## 常见坑
 
-  
+1. **ThreadLocal 不清理**：线程池复用时，下一个请求会读到上一个租户的 `tenantId`，造成**串库**。必须 `finally clear()`。
+2. **嵌套切换直接 `remove()`**：内层方法切换数据源后，`remove()` 会把外层的也清掉。应该保存旧值，执行完恢复：
+   ```java
+   String old = DynamicDataSourceHolder.get();
+   try {
+       DynamicDataSourceHolder.set(newDs);
+       // ...
+   } finally {
+       if (old == null) DynamicDataSourceHolder.clear();
+       else DynamicDataSourceHolder.set(old);
+   }
+   ```
+3. **事务先于数据源切换**：`@Transactional` 在开启事务时就会获取连接；如果数据源切面排在事务之后，切库不会生效。用 `@Order` 保证数据源切面先执行。
+4. **同类自调用**：`this.method()` 不走代理，AOP 不生效，数据源不会切换；和 `@Transactional` 自调用失效是同一个原因。
+5. **注解拿错位置**：`joinPoint.getTarget().getClass().getAnnotation(...)` 只能拿到类上的注解，拿不到方法上的；要用 `MethodSignature.getMethod()` 或 `AnnotatedElementUtils.findMergedAnnotation`。
+6. **`getParameterNames()` 返回 `arg0`**：编译时没加 `-parameters`，参数名拿不到；要么加编译参数，要么用注解显式指定参数下标。
+7. **SQL 替换误伤**：`replaceAll` 会把整个 `from table` 替换掉，丢掉 `from`；用 `appendReplacement`，并且只匹配目标表。
+8. **`assert` 不生效**：JVM 默认关闭断言，`assert tableName != null` 等于没写；该抛异常就抛异常。
+9. **多数据源事务管理器选错**：每个数据源要配自己的 `DataSourceTransactionManager`，`@Transactional` 要指定对应的事务管理器。
+10. **跨库事务**：`@Transactional` 只对当前数据源生效；跨库要么避免，要么上 Seata 这类分布式事务方案。
+
+# 小结
+
+我一向不太喜欢写总结，因为该说的正文里都说了。不过考虑到很多读者是冲着面试来的，还是列成清单：
+
+1. **动态数据源的原理？** AOP 把数据源标识放进 ThreadLocal，`AbstractRoutingDataSource.determineCurrentLookupKey()` 取出并选择目标数据源。
+2. **为什么用 ThreadLocal？** 把租户信息从 Controller 传到 DAO，避免层层传参；用完必须清理。
+3. **为什么 AOP 要排在事务前面？** 事务开启时就会拿连接，数据源切换必须在拿连接之前。
+4. **垂直拆分和水平拆分的区别？** 垂直按业务 / 租户拆库，水平按行拆表。
+5. **分表 SQL 怎么改？** MyBatis 拦截 `StatementHandler.prepare`，用 `appendReplacement` 替换表名。
+6. **最大的坑是什么？** ThreadLocal 不清理导致串库；其次是事务与切换顺序。
+7. **怎么注册成 Starter？** 自动配置类写进 `spring.factories` 或 `AutoConfiguration.imports`，规范见 [starter.md](starter.md)。
+
+# 参考
+
+- Spring `AbstractRoutingDataSource` 源码
+- MyBatis `Interceptor` / `StatementHandler` 源码
+- [starter.md](starter.md)（自动装配与 Starter）、[../spring/SpringAop代理.md](../spring/SpringAop代理.md)
