@@ -1,6 +1,6 @@
-A 依赖 B、B 依赖 A，容器按"造 A → 发现要 B → 造 B → 发现要 A"的顺序走，就会无限递归。Spring 用**三级缓存**解开了这个环。
+`AService` 的字段里注入了 `BService`，`BService` 的字段里又注入了 `AService`。这时候创建 `AService` 需要先创建 `BService`，创建 `BService` 又需要先创建 `AService`；如果容器没有任何缓存，这两个对象就会一直互相等待，谁也创建不出来。
 
-这篇不背结论，直接从 `doGetBean` 的源码看：三级缓存分别在哪一步写入、哪一步读取，为什么两级不够，以及构造器和 prototype 为什么解不了。
+Spring 用三级缓存解决了这个问题。这篇不背结论，直接从 `doGetBean` 的源码看：三级缓存分别在哪一步写入、哪一步读取，为什么两级不够，以及构造器和 prototype 为什么解不了。
 
 # 先说结论
 
@@ -35,7 +35,7 @@ public class Singleton {
             Class<?> fieldClass = field.getType();
             String fieldBeanName = fieldClass.getSimpleName().toLowerCase();
             field.set(obj, singleMap.containsKey(fieldBeanName)
-                    ? singleMap.get(fieldBeanName)              // ② 已在缓存里，直接取（解开循环的关键）
+                    ? singleMap.get(fieldBeanName)              // ② 已在缓存里，直接取（打破循环的关键）
                     : getBean(fieldClass));
         }
         return (T) obj;
@@ -50,7 +50,7 @@ com.xiao.A@4f3f5b24
 com.xiao.B@15aeb7ab
 ```
 
-所以"一级缓存解决不了循环依赖"这个说法**并不准确**：对普通字段注入，一个 Map 就够——**实例化后立刻放进 Map，再填属性**，对方来取时就能拿到这个半成品。
+所以"一级缓存解决不了循环依赖"这个说法**并不准确**：对普通字段注入，一个 Map 就够——**实例化后立刻放进 Map，再填属性**，对方来取时就能拿到这个半成品（对象已经 new 出来，但属性还没填完）。
 
 那 Spring 为什么还要三级？因为它还要处理 AOP 代理，而代理不该在这个时间点生成。下面开始看源码。
 
@@ -130,7 +130,7 @@ protected Object getSingleton(String beanName, boolean allowEarlyReference) {
 }
 ```
 
-这段就是"三级缓存"的全部秘密：
+这段就是三级缓存的完整逻辑：
 
 - **一级 `singletonObjects`**：完整 Bean，正常 `getBean` 都从这里拿；
 - **二级 `earlySingletonObjects`**：提前暴露的半成品（或代理），只有循环依赖时才会出现；
@@ -173,7 +173,7 @@ public Object getSingleton(String beanName, ObjectFactory<?> singletonFactory) {
 }
 ```
 
-`addSingleton` 就是"成品入库 + 清理临时缓存"：
+`addSingleton` 的作用是把 Bean 放进一级缓存，并清掉二、三级缓存：
 
 ```java
 protected void addSingleton(String beanName, Object singletonObject) {
@@ -268,7 +268,7 @@ getBean(A)
 
 # 为什么两级不够
 
-如果只有两级（一级成品 + 二级半成品），二级里只能直接放**原始对象**：
+如果只有两级（一级放完整 Bean，二级放提前暴露的对象），二级里只能直接放**原始对象**：
 
 - A 实例化后，把原始 A 放进二级；
 - B 来取，拿到原始 A；
@@ -313,12 +313,12 @@ Spring 对 prototype 只做"正在创建"的标记（`beforePrototypeCreation` /
 # 实战提醒
 
 1. **Spring Boot 2.6+ 默认禁止循环依赖**：`spring.main.allow-circular-references` 默认为 `false`，循环依赖会直接启动失败。需要兼容老代码时可以打开，但更好的做法是重构依赖。
-2. **`@Lazy` 可以打断环**：在其中一个依赖上加 `@Lazy`，注入的是代理，第一次真正调用时才解析，构造器循环依赖也能绕过。
+2. **`@Lazy` 可以打破循环依赖**：在其中一个依赖上加 `@Lazy`，注入的是代理，第一次真正调用时才解析，构造器循环依赖也能绕过。
 3. **循环依赖本身是设计问题**：三级缓存是兜底，不是鼓励 A、B 互依赖。能通过分层、事件、接口拆分解决的，优先重构。
 
 # 小结
 
-1. **什么是循环依赖？** A 依赖 B、B 依赖 A，形成闭环，朴素实现会无限递归。
+1. **什么是循环依赖？** A 依赖 B、B 又依赖 A，互相等待，没有任何缓存的实现会无限递归。
 2. **一级缓存能解决吗？** 对普通字段注入能——实例化后先放进 Map 再填属性即可。
 3. **为什么还要三级？** 因为 AOP：要能在对象未初始化完成时暴露引用，又要保证最终暴露的是**代理**，所以需要工厂来延迟决策。
 4. **二级为什么不够？** 二级只能放原始对象，提前注入的引用会指向原始对象，导致代理失效。
