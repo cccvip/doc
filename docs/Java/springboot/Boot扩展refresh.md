@@ -1,215 +1,76 @@
-上一篇 [refresh流程.md](refresh流程.md) 讲的是 Spring Framework 的通用流程。这一篇只讲 **Spring Boot 对它的扩展**：Boot 的 Servlet 容器子类，把内嵌 Web 服务器接进了 `refresh()`。
+上一篇讲的是 Spring 通用的 refresh。这一篇只讲一件事：Boot 是怎么让内嵌的 Web 服务器在启动过程中"该建的时候建、该起的时候起"的。
 
-先明确一点：这些扩展**只对 Servlet 应用（`webApplicationType = SERVLET`）生效**。普通应用（`NONE`）和响应式应用（`REACTIVE`）没有内嵌 Servlet Web 服务器，走的是另外的实现，或者压根不做这件事。
+先划个范围。这套东西只对 Servlet 应用有意义。批处理、命令行这类应用（`webApplicationType` 为 `NONE`）根本没有 Web 服务器，行为跟纯 Spring 一模一样；响应式应用（`REACTIVE`）另有一套实现。所以真正会碰到这段逻辑的，就是你引了 `spring-boot-starter-web` 的那种普通服务。
 
-> 基于 Spring Boot 2.5.x。
+## 这一章其实只解决一个问题
 
-# Boot 换掉了容器类型
+refresh 完全是 Spring 的，它按自己那套流程走：解析注解、创建 Bean、收尾。问题是，Spring 框架本身并不知道你要不要对外提供 HTTP 服务，它不认识"Web 服务器"这种东西。
 
-`createApplicationContext` 按 `webApplicationType` 选容器：
+所以 Boot 得自己想清楚两件事：服务器什么时候建出来，什么时候让它开始接请求。这一章就围绕这两件事，没有更多。
 
-| 类型 | 容器类 | 内嵌 Web 服务器 |
-|---|---|---|
-| `SERVLET` | `AnnotationConfigServletWebServerApplicationContext`（继承 `ServletWebServerApplicationContext`） | Tomcat / Jetty / Undertow |
-| `REACTIVE` | `AnnotationConfigReactiveWebServerApplicationContext` | Netty 等，由 `ReactiveWebServerFactory` 创建 |
-| `NONE` | `AnnotationConfigApplicationContext`（无 Web 扩展） | 无 |
+## 先认识一个东西：Lifecycle
 
-本篇以 Servlet 为例。
+要看懂接下来的安排，得先知道 Spring 里有个叫 Lifecycle 的机制。
 
-# Boot 覆盖了 refresh 的哪几个点
+有一类对象需要等容器启动完成才开始工作、容器关闭时停下来，比如线程池、消息消费者、Web 服务器。Spring 给它们约定了统一的开关：实现 Lifecycle 接口，容器在启动收尾时会挨个把它们启动，关闭时挨个停掉。
 
-`ServletWebServerApplicationContext` 覆盖了父类的这些方法：
+这条消息对 Boot 很关键。它意味着 Boot 不必去改造 Spring 的 refresh，只要把 Web 服务器包装成一个 Lifecycle 交给容器，Spring 到点自然会把它启动。
 
-| 方法 | 在 refresh 里的位置 | Boot 做了什么 |
-|---|---|---|
-| `postProcessBeanFactory` | 第 4 步 | 注册 Web 作用域、处理 `ServletContextAware` |
-| `onRefresh` | 第 9 步 | **创建** Web 服务器（不启动） |
-| `refresh`（`final`） | 包在整个 refresh 外层 | 启动失败时停止 WebServer |
-| `doClose` | 容器关闭时 | 发布 `ReadinessState.REFUSING_TRAFFIC` |
+## 于是 Boot 做了两件事
 
-**注意：Boot 2.5 并没有覆盖 `finishRefresh`。** 它没有 `startWebServer()` 这种做法。Web 服务器的**启动**是由一个注册进容器的 `SmartLifecycle` 完成的（见下）。
+**建服务器**：在 refresh 的 `onRefresh` 这一步（第 9 步）把服务器建出来。这一步的时机是——Bean 马上要开始创建，但还没开始。放在这里，是因为有些 Bean 要用到 `ServletContext`（Servlet 规范里的上下文，Filter、Servlet 都注册在它上面），服务器得先建出来，它们才注入得进。
 
-# 一、postProcessBeanFactory：注册 Web 作用域
+建的时候顺手做两件事：把容器里收集到的 Filter、Servlet、Listener 注册到 `ServletContext` 上——你写的 Filter 能被识别，就是这一步挂上去的；再额外注册一个负责启停的 Lifecycle 组件。
 
-```java
-@Override
-protected void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
-    beanFactory.addBeanPostProcessor(new WebApplicationContextServletContextAwareProcessor(this));
-    beanFactory.ignoreDependencyInterface(ServletContextAware.class);
-    registerWebApplicationScopes();
-}
-```
+**起服务器**：到了 refresh 收尾（第 12 步），Spring 照例启动所有 Lifecycle，Boot 那个负责启停的组件趁机把服务器拉起来，绑定端口、开始接收请求。
 
-- `WebApplicationContextServletContextAwareProcessor`：处理 `ServletContextAware`，让 Bean 能注入 `ServletContext` / `ServletConfig`；
-- `ignoreDependencyInterface(ServletContextAware.class)`：这些接口由处理器回调，不要按类型自动注入；
-- `registerWebApplicationScopes()`：注册 `request` / `session` 作用域（`application` 作用域稍后在 `selfInitialize` 里注册）。
+于是"建"和"起"被拆到了两个时间点：建在第 9 步，起在第 12 步。
 
-**为什么必须是这一步？** 它在第 4 步，早于第 5 步的 BeanDefinition 解析。作用域要先注册好，后面声明成 `@Scope("request")` 的 BeanDefinition 才有效。
+（顺带说一句版本差异：Spring Boot 2.2 及更早是在收尾时直接启动服务器，2.5 换成了上面这种 Lifecycle 的方式，顺便支持了优雅停机。）
 
-# 二、onRefresh：创建 Web 服务器
+## 为什么非要拆成两步
 
-```java
-@Override
-protected void onRefresh() {
-    super.onRefresh();
-    createWebServer();
-}
+假如建完立刻起，会立刻撞上一个矛盾：此刻 Bean 还没创建完。有些 Bean 初始化时要拿到 `ServletContext`，服务器必须先存在；可服务器一旦提前接收请求，又会遇到"Bean 还没准备好，流量就来了"的尴尬。
 
-private void createWebServer() {
-    WebServer webServer = this.webServer;
-    ServletContext servletContext = getServletContext();
+拆开就都解决了——先建，满足注入需求；最后起，等 Bean 全部就绪。
 
-    if (webServer == null && servletContext == null) {
-        ServletWebServerFactory factory = getWebServerFactory();
-        this.webServer = factory.getWebServer(getSelfInitializer());
-        getBeanFactory().registerSingleton("webServerGracefulShutdown",
-                new WebServerGracefulShutdownLifecycle(this.webServer));
-        getBeanFactory().registerSingleton("webServerStartStop",
-                new WebServerStartStopLifecycle(this, this.webServer));
-    }
-    else if (servletContext != null) {
-        getSelfInitializer().onStartup(servletContext);
-    }
-    initPropertySources();
-}
-```
+## 顺带一提：选哪个服务器
 
-分几块看。
+第 9 步建服务器之前，Boot 得先决定用哪个实现：Tomcat、Jetty 还是 Undertow。它的办法是去容器里找"Web 服务器工厂"，并且要求**有且仅有一个**。
 
-## 1）找到唯一的 ServletWebServerFactory
+引了 `spring-boot-starter-web` 之后，自动配置会注册一个 Tomcat 的实现。要是同时把 Jetty、Undertow 的依赖也引进来，这里就会因为找到多个而报错，服务直接起不来。"多个 Web 容器依赖不能共存"说的就是这件事。
 
-```java
-String[] beanNames = getBeanFactory().getBeanNamesForType(ServletWebServerFactory.class);
-if (beanNames.length == 0) {
-    throw new ApplicationContextException("... missing ServletWebServerFactory bean.");
-}
-if (beanNames.length > 1) {
-    throw new ApplicationContextException("... multiple ServletWebServerFactory beans : ...");
-}
-```
+## 服务器起来时，事件走到哪了
 
-引入 `spring-boot-starter-web` 后，自动配置会注册一个 `TomcatServletWebServerFactory`（换成 Jetty / Undertow 则是别的实现）。这里要求**有且仅有一个**——所以同时引入多个 Web 容器会直接启动失败。
+前面说过，Lifecycle 是在收尾阶段被启动的。把它放回整条时间线：
 
-## 2）factory.getWebServer：创建服务器 + ServletContext
+| 时刻 | 服务器起来了吗 |
+|---|---|
+| Bean 初始化回调（`@PostConstruct`） | 没有，只是建好了 |
+| 启动 Lifecycle，服务器在这时绑定端口 | 刚起来 |
+| 发出 `ContextRefreshedEvent` | 已经起来了 |
+| 发出 `ApplicationReadyEvent` | 已经起来了 |
 
-这一步创建出 `WebServer` 对象，同时创建 `ServletContext` 并回调 `selfInitialize`：
+后两个事件由 SpringApplication 在 refresh 之外发出，这里一并列出，方便对照。
 
-```java
-private void selfInitialize(ServletContext servletContext) throws ServletException {
-    prepareWebApplicationContext(servletContext);
-    registerApplicationScope(servletContext);            // application 作用域
-    WebApplicationContextUtils.registerEnvironmentBeans(getBeanFactory(), servletContext);
-    for (ServletContextInitializer beans : getServletContextInitializerBeans()) {
-        beans.onStartup(servletContext);                  // 注册 Filter / Servlet / Listener
-    }
-}
-```
+这张表正好能解释两个面试常被问到的现象：
 
-`getServletContextInitializerBeans()` 会收集容器里的 `ServletContextInitializer`、`Servlet`、`Filter` 以及部分 `EventListener` Bean，逐个 `onStartup` 注册到 `ServletContext`。**你写的 Filter / Servlet 能被 Web 服务器识别，就是在这里挂上去的。**
+- 在 `@PostConstruct` 里访问本机端口会失败，因为服务器还没启动；
+- 在 `ContextRefreshedEvent` 里访问没问题，服务器已经起来了。
 
-注意：**此时服务器只是创建了，还没有 `start()`**——端口没绑定，请求进不来。
+如果要等"完全可用"再动手，用 `ApplicationRunner` 或监听 `ApplicationReadyEvent` 最稳。
 
-## 3）注册两个 SmartLifecycle
+## 面试速记
 
-```java
-new WebServerGracefulShutdownLifecycle(this.webServer)  // 优雅停机
-new WebServerStartStopLifecycle(this, this.webServer)   // 启动 / 停止
-```
+- 这套 Web 扩展只对 Servlet 应用生效，`NONE` 应用与纯 Spring 一致。
+- 服务器**建**在 refresh 的 `onRefresh`（第 9 步），**起**在收尾阶段（第 12 步），靠的是一个 Lifecycle 组件。
+- 拆成两步的原因：建早了是为了让 Bean 能拿到 `ServletContext`，起晚了是为了等 Bean 就绪。
+- 服务器启动早于 `ContextRefreshedEvent`；应用完全可用看 `ApplicationReadyEvent`。
+- 多个 Web 容器依赖不能共存。
 
-它们是理解"服务器何时启动"的关键。
+## 参考
 
-# 三、Web 服务器什么时候真正启动
-
-**创建在 `onRefresh`（第 9 步），启动在第 12 步 `finishRefresh` 里的 `lifecycleProcessor.onRefresh()`。**
-
-`WebServerStartStopLifecycle` 是一个 `SmartLifecycle`：
-
-```java
-class WebServerStartStopLifecycle implements SmartLifecycle {
-
-    @Override
-    public void start() {
-        this.webServer.start();                 // ← 真正绑定端口、开始接收请求
-        this.running = true;
-        this.applicationContext.publishEvent(
-                new ServletWebServerInitializedEvent(this.webServer, this.applicationContext));
-    }
-
-    @Override
-    public int getPhase() {
-        return Integer.MAX_VALUE - 1;           // 排在多数 Lifecycle 之后启动
-    }
-}
-```
-
-而 `finishRefresh` 的父类实现是：
-
-```java
-protected void finishRefresh() {
-    clearResourceCaches();
-    initLifecycleProcessor();
-    getLifecycleProcessor().onRefresh();   // ← 启动 WebServer，并发 ServletWebServerInitializedEvent
-    publishEvent(new ContextRefreshedEvent(this));
-}
-```
-
-所以顺序是：
-
-1. `lifecycleProcessor.onRefresh()` → `WebServerStartStopLifecycle.start()` → `webServer.start()` → 发布 `ServletWebServerInitializedEvent`；
-2. 然后才发布 `ContextRefreshedEvent`。
-
-**结论：Web 服务器启动早于 `ContextRefreshedEvent`。** `getPhase() = Integer.MAX_VALUE - 1` 只是让它排在多数 `Lifecycle` Bean 之后启动，但仍在 `ContextRefreshedEvent` 之前。
-
-> 版本差异：Spring Boot 2.2 及更早，是在 `ServletWebServerApplicationContext.finishRefresh()` 里直接调用 `startWebServer()`；2.5 改成了上面这种 `SmartLifecycle` 方式（顺带支持优雅停机）。
-
-# 事件顺序与"服务是否可用"
-
-| 事件 / 回调 | 触发位置 | WebServer 是否已启动 |
-|---|---|---|
-| `@PostConstruct` | `finishBeanFactoryInitialization` | 否 |
-| `ServletWebServerInitializedEvent` | `finishRefresh` → `lifecycleProcessor.onRefresh()` | 是（刚启动） |
-| `ContextRefreshedEvent` | `finishRefresh` | 是 |
-| `ApplicationStartedEvent` | `refresh()` 返回后、Runner 前 | 是 |
-| `ApplicationReadyEvent` | Runner 执行完后 | 是 |
-
-（后两个是 Boot 在 `SpringApplication.run` 里发布的，不属于 `refresh` 本身。）
-
-这解释了两个常见现象：
-
-- 在 `@PostConstruct` 里访问本机端口**会失败**——此时服务器只创建、没启动，而 `@PostConstruct` 发生在 `finishBeanFactoryInitialization`，早于 `finishRefresh`；
-- 在 `ContextRefreshedEvent` 里访问本机端口**是可行的**——服务器已经启动。
-
-想在"服务完全可用"后做事，用 `ApplicationRunner` 或监听 `ApplicationReadyEvent` 最稳妥。
-
-# 只对 Servlet 应用生效
-
-| `webApplicationType` | 容器 | 内嵌 Web 服务器 |
-|---|---|---|
-| `SERVLET` | `AnnotationConfigServletWebServerApplicationContext` | Tomcat / Jetty / Undertow |
-| `REACTIVE` | `AnnotationConfigReactiveWebServerApplicationContext` | Netty 等 |
-| `NONE` | `AnnotationConfigApplicationContext` | 无 |
-
-`NONE` 类型（纯批处理、命令行应用）不会创建任何 Web 服务器，`onRefresh` 就是默认空实现，行为与 [refresh流程.md](refresh流程.md) 描述的完全一致。
-
-# 常见误解
-
-1. **Boot 覆盖了 `finishRefresh` 来启动服务器**：2.5 不是，改用 `SmartLifecycle`；2.2 及更早才是。
-2. **`ContextRefreshedEvent` 时服务器还没启动**：错，服务器在此之前已由 `lifecycleProcessor.onRefresh()` 启动。
-3. **`@PostConstruct` 里能调本机接口**：不能，服务器还没 `start()`。
-4. **`onRefresh` 会启动服务器**：只创建，不启动。
-5. **Web 服务器在 Bean 实例化之后才创建**：不对，创建在 `onRefresh`（早于 Bean 实例化）。
-6. **多个 Web 容器依赖可以共存**：不可以，`getWebServerFactory` 要求有且仅有一个 `ServletWebServerFactory`。
-
-# 小结
-
-1. **Boot 对 refresh 的扩展只对 Servlet 应用生效**，`NONE` 应用与纯 Spring 一致。
-2. **覆盖点**是 `postProcessBeanFactory`（注册 Web 作用域）和 `onRefresh`（创建 WebServer），不是 `finishRefresh`。
-3. **创建**在 `onRefresh`（第 9 步），**启动**在 `finishRefresh` 的 `lifecycleProcessor.onRefresh()`，由 `WebServerStartStopLifecycle` 完成。
-4. **顺序**：`@PostConstruct` → WebServer 启动 / `ServletWebServerInitializedEvent` → `ContextRefreshedEvent` → `ApplicationStartedEvent` → Runner → `ApplicationReadyEvent`。
-5. **`@PostConstruct` 不能访问本机端口，`ContextRefreshedEvent` 可以。**
-
-# 参考
-
-- Spring Boot 2.5.x 源码：`ServletWebServerApplicationContext`、`WebServerStartStopLifecycle`、`WebServerGracefulShutdownLifecycle`
+- Spring Boot 2.5.x 源码：`ServletWebServerApplicationContext`、`WebServerStartStopLifecycle`
 - Spring Framework 5.3.x 源码：`AbstractApplicationContext.finishRefresh`
-- [refresh流程.md](refresh流程.md)（Spring 通用流程）、[启动流程.md](启动流程.md)（Boot 的注解与编排）
+- [refresh流程.md](refresh流程.md)：Spring 通用流程
+- [启动流程.md](启动流程.md)：Boot 的注解与 SpringApplication 编排
