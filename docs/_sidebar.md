@@ -26,6 +26,7 @@
       -  [SpringBootStarter](Java/springboot/starter.md)
       -  [SpringBoot启动流程](Java/springboot/启动流程.md)
       -  [SpringBoot refresh 流程](Java/springboot/refresh流程.md)
+      -  [Boot 对 refresh 的扩展](Java/springboot/Boot扩展refresh.md)
       -  [动态数据源](Java/springboot/router.md)
     - springMvc
       -  [Mvc](Java/springMvc/Mvc.md)
