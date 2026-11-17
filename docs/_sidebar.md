@@ -31,6 +31,7 @@
       -  [动态数据源](Java/springboot/router.md)
     - springcloud
       -  [总览](Java/springcloud/总览.md)
+      -  [注册中心](Java/springcloud/注册中心.md)
       -  [面试题](Java/springcloud/面试题.md)
     - springMvc
       -  [Mvc](Java/springMvc/Mvc.md)
@@ -41,6 +42,7 @@
   - [常见使用指南](practice/guide.md)
   - [RR情况下的死锁](practice/deadlock.md)
   - [SCG的调优分析](practice/SCG.md)
+  - [一次压测调优复盘](practice/压测调优复盘.md)
 - Redis
   - [认识数据类型](redis/初识.md)
   - [主从/集群](redis/架构.md)
